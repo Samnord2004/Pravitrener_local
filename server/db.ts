@@ -3,6 +3,7 @@ import path from 'path';
 import type { StudioDatabase } from '../src/types.ts';
 import { calculateMiScale2Metrics, DEFAULT_MI_SCALE_CALIBRATION } from '../src/utils/miScale2.ts';
 import { DEFAULT_BRAND_ABOUT, DEFAULT_METHODOLOGY_BLOCKS } from '../src/utils/brandAbout.ts';
+import { inferExerciseDifficulty } from '../src/utils/serviceCategories.ts';
 import { createInitialDatabase } from './seed.ts';
 
 const DATA_DIR = path.resolve(process.cwd(), 'data');
@@ -208,6 +209,7 @@ export function getDb(): StudioDatabase {
           return {
             ...ex,
             exerciseType: exType,
+            difficulty: inferExerciseDifficulty(ex),
             visibility: ex.visibility === 'hidden' ? 'hidden' : 'public',
           };
         });

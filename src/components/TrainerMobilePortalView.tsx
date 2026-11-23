@@ -68,6 +68,11 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { ExercisesLibraryView } from './ExercisesLibraryView';
 import { PostureComparisonSection } from './PostureComparisonSection';
 import { TrainerAvatar, TrainerProfileEditorForm } from './TrainerProfileCard';
+import { DifficultyStars } from './DifficultyStars';
+import {
+  computeProgramDifficulty,
+  inferExerciseDifficulty,
+} from '../utils/serviceCategories';
 
 interface TrainerPortalProps {
   currentUser: UserAccount;
@@ -212,6 +217,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   const [progDescription, setProgDescription] = useState('');
   const [progExerciseIds, setProgExerciseIds] = useState<string[]>([]);
   const [exPickerQuery, setExPickerQuery] = useState('');
+  const [exPickerDifficulty, setExPickerDifficulty] = useState<'all' | 'easy' | 'medium' | 'hard'>('all');
   const [savingProgram, setSavingProgram] = useState(false);
 
   // Blog state
@@ -1383,24 +1389,33 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                     <div className="flex flex-wrap gap-2">
                       {programs
                         .filter((p) => p.clientId === selectedClient.id)
-                        .map((prog) => (
-                          <div
-                            key={prog.id}
-                            className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border st-border st-surface-muted text-xs"
-                          >
-                            <span className="font-medium">{prog.title}</span>
-                            <span className="font-mono st-muted">
-                              ({prog.exerciseIds.length} упр.)
-                            </span>
-                            <button
-                              type="button"
-                              onClick={() => onLaunchProgramInSession(prog.id)}
-                              className="st-accent-text font-semibold hover:underline cursor-pointer"
+                        .map((prog) => {
+                          const pEx = prog.exerciseIds
+                            .map((id) => exercises.find((e) => e.id === id))
+                            .filter((e): e is Exercise => Boolean(e));
+                          const pDiff = computeProgramDifficulty(pEx);
+                          return (
+                            <div
+                              key={prog.id}
+                              className="inline-flex items-center gap-2 px-3 py-1.5 rounded-lg border st-border st-surface-muted text-xs"
                             >
-                              В сессию →
-                            </button>
-                          </div>
-                        ))}
+                              <span className="font-medium">{prog.title}</span>
+                              {pEx.length > 0 && (
+                                <DifficultyStars value={pDiff.avg} size="xs" showNumeric />
+                              )}
+                              <span className="font-mono st-muted">
+                                ({prog.exerciseIds.length} упр.)
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => onLaunchProgramInSession(prog.id)}
+                                className="st-accent-text font-semibold hover:underline cursor-pointer"
+                              >
+                                В сессию →
+                              </button>
+                            </div>
+                          );
+                        })}
                       {programs.filter((p) => p.clientId === selectedClient.id).length ===
                         0 && (
                         <span className="text-xs st-muted">
@@ -1578,8 +1593,24 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {/* Selected exercises sequence */}
                 <div className="p-3.5 rounded-lg st-surface-muted border st-border space-y-2">
-                  <div className="text-xs font-semibold">
-                    Последовательность упражнений ({progExerciseIds.length})
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-xs font-semibold">
+                      Последовательность упражнений ({progExerciseIds.length})
+                    </div>
+                    {progExerciseIds.length > 0 && (
+                      <DifficultyStars
+                        value={
+                          computeProgramDifficulty(
+                            progExerciseIds
+                              .map((id) => exercises.find((e) => e.id === id))
+                              .filter((e): e is Exercise => Boolean(e))
+                          ).avg
+                        }
+                        size="xs"
+                        showNumeric
+                        showLabel
+                      />
+                    )}
                   </div>
                   {progExerciseIds.map((exId, idx) => {
                     const ex = exercises.find((e) => e.id === exId);
@@ -1589,12 +1620,17 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                         key={`${exId}-${idx}`}
                         className="flex items-center justify-between gap-2 p-2 rounded-lg st-surface border st-border text-xs"
                       >
-                        <div className="min-w-0">
-                          <span className="font-mono font-bold st-accent-text mr-2">
+                        <div className="min-w-0 flex items-center gap-2">
+                          <span className="font-mono font-bold st-accent-text shrink-0">
                             {idx + 1}.
                           </span>
-                          <span className="font-medium">{ex.title}</span>
-                          <span className="font-mono text-[10px] st-muted ml-2">
+                          <span className="font-medium truncate">{ex.title}</span>
+                          <DifficultyStars
+                            value={inferExerciseDifficulty(ex)}
+                            size="xs"
+                            className="shrink-0"
+                          />
+                          <span className="font-mono text-[10px] st-muted shrink-0 hidden sm:inline">
                             {ex.defaultDurationSec}с · {ex.recommendedLoadPct}%
                           </span>
                         </div>
@@ -1642,20 +1678,52 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
 
                 {/* Exercise Picker */}
                 <div className="p-3.5 rounded-lg st-surface-muted border st-border space-y-2">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
                     <span className="text-xs font-semibold">Добавить из базы</span>
-                    <input
-                      type="text"
-                      value={exPickerQuery}
-                      onChange={(e) => setExPickerQuery(e.target.value)}
-                      placeholder="Поиск упражнения..."
-                      className="px-2.5 py-1 text-xs rounded border st-border st-surface"
-                    />
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <div className="flex items-center gap-0.5 p-0.5 rounded st-surface border st-border text-[10px]">
+                        {(
+                          [
+                            ['all', 'Все ★'],
+                            ['easy', '1–2★'],
+                            ['medium', '3★'],
+                            ['hard', '4–5★'],
+                          ] as const
+                        ).map(([dk, dl]) => (
+                          <button
+                            key={dk}
+                            type="button"
+                            onClick={() => setExPickerDifficulty(dk)}
+                            className={`px-1.5 py-0.5 rounded cursor-pointer ${
+                              exPickerDifficulty === dk
+                                ? 'st-accent-bg font-semibold'
+                                : 'st-muted'
+                            }`}
+                          >
+                            {dl}
+                          </button>
+                        ))}
+                      </div>
+                      <input
+                        type="text"
+                        value={exPickerQuery}
+                        onChange={(e) => setExPickerQuery(e.target.value)}
+                        placeholder="Поиск..."
+                        className="px-2.5 py-1 text-xs rounded border st-border st-surface w-28 sm:w-36"
+                      />
+                    </div>
                   </div>
                   <div className="space-y-1.5 max-h-56 overflow-y-auto pr-1">
                     {exercises
-                      .filter(
-                        (ex) =>
+                      .filter((ex) => {
+                        const diff = inferExerciseDifficulty(ex);
+                        const diffOk =
+                          exPickerDifficulty === 'all' ||
+                          (exPickerDifficulty === 'easy' && diff <= 2) ||
+                          (exPickerDifficulty === 'medium' && diff === 3) ||
+                          (exPickerDifficulty === 'hard' && diff >= 4);
+                        if (!diffOk) return false;
+                        return (
                           !exPickerQuery.trim() ||
                           ex.title
                             .toLowerCase()
@@ -1663,7 +1731,8 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                           ex.category
                             .toLowerCase()
                             .includes(exPickerQuery.toLowerCase())
-                      )
+                        );
+                      })
                       .map((ex) => (
                         <button
                           key={ex.id}
@@ -1673,10 +1742,17 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                           }
                           className="w-full text-left flex items-center justify-between gap-2 p-2 rounded-lg st-surface border st-border text-xs hover:opacity-90 cursor-pointer"
                         >
-                          <div className="min-w-0">
+                          <div className="min-w-0 flex-1">
                             <div className="font-medium truncate">{ex.title}</div>
-                            <div className="text-[10px] st-muted">
-                              {ex.category} · {ex.defaultDurationSec} сек
+                            <div className="flex items-center gap-2 text-[10px] st-muted mt-0.5">
+                              <span>
+                                {ex.category} · {ex.defaultDurationSec} сек
+                              </span>
+                              <DifficultyStars
+                                value={inferExerciseDifficulty(ex)}
+                                size="xs"
+                                showNumeric
+                              />
                             </div>
                           </div>
                           <Plus className="w-3.5 h-3.5 st-accent-text shrink-0" />
@@ -1722,6 +1798,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                 (acc, e) => acc + e.defaultDurationSec,
                 0
               );
+              const progDiff = computeProgramDifficulty(progExercises);
 
               return (
                 <div
@@ -1731,9 +1808,19 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                   <div className="space-y-2">
                     <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded st-accent-soft font-semibold">
-                          {prog.level}
-                        </span>
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded st-accent-soft font-semibold">
+                            {prog.level}
+                          </span>
+                          {progExercises.length > 0 && (
+                            <DifficultyStars
+                              value={progDiff.avg}
+                              size="xs"
+                              showNumeric
+                              showLabel
+                            />
+                          )}
+                        </div>
                         <h4 className="font-display text-base font-bold mt-1">
                           {prog.title}
                         </h4>
@@ -1775,9 +1862,15 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                       {progExercises.map((ex, i) => (
                         <span
                           key={`${ex.id}-${i}`}
-                          className="text-[11px] px-2 py-0.5 rounded st-surface-muted border st-border"
+                          className="inline-flex items-center gap-1.5 text-[11px] px-2 py-0.5 rounded st-surface-muted border st-border"
                         >
-                          {i + 1}. {ex.title}
+                          <span>
+                            {i + 1}. {ex.title}
+                          </span>
+                          <DifficultyStars
+                            value={inferExerciseDifficulty(ex)}
+                            size="xs"
+                          />
                         </span>
                       ))}
                     </div>
@@ -2257,6 +2350,8 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
           onExerciseUpdated={onExerciseUpdated}
           onExerciseDeleted={onExerciseDeleted}
           onProgramAdded={onProgramAdded}
+          onProgramUpdated={onProgramUpdated}
+          onProgramDeleted={onProgramDeleted}
           onLaunchProgramInSession={onLaunchProgramInSession}
         />
       )}

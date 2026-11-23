@@ -246,6 +246,7 @@ export interface Exercise {
   safetyNotes: string;
   defaultDurationSec: number;
   recommendedLoadPct: number;
+  difficulty?: number; // 1..5 шкала сложности
   visibility?: ExerciseVisibility;
   createdByUserId?: string;
   createdBy?: string;

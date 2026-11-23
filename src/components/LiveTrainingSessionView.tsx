@@ -44,6 +44,11 @@ import {
   useHardwareTelemetry,
 } from '../utils/hardwareManager';
 import { exportSessionReportPdf } from '../utils/pdfReport';
+import {
+  computeProgramDifficulty,
+  inferExerciseDifficulty,
+} from '../utils/serviceCategories';
+import { DifficultyStars } from './DifficultyStars';
 
 interface LiveSessionProps {
   currentUser: UserAccount;
@@ -732,20 +737,61 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
             </div>
 
             {selectionMode === 'program' ? (
-              <select
-                value={selectedProgramId}
-                onChange={(e) => {
-                  setSelectedProgramId(e.target.value);
-                  setExerciseIndex(0);
-                }}
-                className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
-              >
-                {programs.map((p) => (
-                  <option key={p.id} value={p.id}>
-                    {p.title} ({p.exerciseIds.length} упр.)
-                  </option>
-                ))}
-              </select>
+              <div className="space-y-1.5">
+                <select
+                  value={selectedProgramId}
+                  onChange={(e) => {
+                    setSelectedProgramId(e.target.value);
+                    setExerciseIndex(0);
+                  }}
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-950"
+                >
+                  {programs.map((p) => {
+                    const pExs = p.exerciseIds
+                      .map((id) => exercises.find((ex) => ex.id === id))
+                      .filter((ex): ex is Exercise => Boolean(ex));
+                    const pDiff = computeProgramDifficulty(pExs);
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.title} ({p.exerciseIds.length} упр. · {pDiff.avg.toFixed(1)}★)
+                      </option>
+                    );
+                  })}
+                </select>
+                {queueExercises.length > 0 && (
+                  <div className="flex flex-wrap items-center justify-between gap-1.5 px-1">
+                    <DifficultyStars
+                      value={computeProgramDifficulty(queueExercises).avg}
+                      size="xs"
+                      showNumeric
+                      showLabel
+                    />
+                    <div className="flex flex-wrap items-center gap-1">
+                      {queueExercises.map((ex, idx) => (
+                        <button
+                          key={`${ex.id}-${idx}`}
+                          type="button"
+                          onClick={() => {
+                            setExerciseIndex(idx);
+                            setExerciseState('idle');
+                            setExerciseElapsedSec(0);
+                          }}
+                          title={`${ex.title} · ${inferExerciseDifficulty(ex)}/5★`}
+                          className={`inline-flex items-center gap-1 px-1.5 py-0.5 rounded text-[10px] border cursor-pointer ${
+                            idx === exerciseIndex
+                              ? 'border-cyan-500 bg-cyan-500/10 font-semibold text-cyan-700 dark:text-cyan-300'
+                              : 'border-slate-200 dark:border-slate-700 text-slate-500 hover:opacity-80'
+                          }`}
+                        >
+                          <span>{idx + 1}</span>
+                          <span>·</span>
+                          <span>{inferExerciseDifficulty(ex)}★</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             ) : (
               <select
                 value={selectedExerciseId}
@@ -757,7 +803,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
               >
                 {exercises.map((ex) => (
                   <option key={ex.id} value={ex.id}>
-                    {ex.title} ({ex.category})
+                    {ex.title} ({ex.category} · {inferExerciseDifficulty(ex)}★)
                   </option>
                 ))}
               </select>
@@ -769,8 +815,14 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
               <div>
                 <div className="flex items-start justify-between gap-2">
                   <div className="min-w-0">
-                    <div className="text-[11px] text-slate-500 truncate">
-                      Упр. {exerciseIndex + 1}/{queueExercises.length} · {currentExercise.category}
+                    <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-slate-500">
+                      <span className="truncate">
+                        Упр. {exerciseIndex + 1}/{queueExercises.length} · {currentExercise.category}
+                      </span>
+                      <DifficultyStars
+                        value={inferExerciseDifficulty(currentExercise)}
+                        size="xs"
+                      />
                     </div>
                     <div className="font-display text-sm font-semibold mt-0.5 leading-snug line-clamp-2">
                       {currentExercise.title}

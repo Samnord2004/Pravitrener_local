@@ -24,7 +24,13 @@ import type {
   WorkoutProgram,
 } from '../types';
 import { apiRequest } from '../utils/api';
-import { EXERCISE_TYPE_OPTIONS, inferExerciseType } from '../utils/serviceCategories';
+import {
+  computeProgramDifficulty,
+  EXERCISE_TYPE_OPTIONS,
+  inferExerciseDifficulty,
+  inferExerciseType,
+} from '../utils/serviceCategories';
+import { DifficultyStarPicker, DifficultyStars } from './DifficultyStars';
 
 interface ExercisesLibraryProps {
   currentUser: UserAccount;
@@ -253,6 +259,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
 }) => {
   const [categoryFilter, setCategoryFilter] = useState<string>('all');
   const [exerciseTypeFilter, setExerciseTypeFilter] = useState<'all' | ExerciseType>('all');
+  const [difficultyFilter, setDifficultyFilter] = useState<'all' | 'easy' | 'medium' | 'hard'>('all');
   const [visibilityFilter, setVisibilityFilter] = useState<'all' | ExerciseVisibility>('all');
   const [search, setSearch] = useState('');
   const [expandedExId, setExpandedExId] = useState<string | null>(null);
@@ -267,6 +274,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
   const [exTitle, setExTitle] = useState('');
   const [exCat, setExCat] = useState<Exercise['category']>('Базовое вытяжение');
   const [exType, setExType] = useState<ExerciseType>('Декомпрессия');
+  const [exDifficulty, setExDifficulty] = useState<number>(3);
   const [exVisibility, setExVisibility] = useState<ExerciseVisibility>('public');
   const [exImage, setExImage] = useState(PRESET_PHOTOS[0].url);
   const [exInstructions, setExInstructions] = useState('');
@@ -286,6 +294,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
   const [editTitle, setEditTitle] = useState('');
   const [editCat, setEditCat] = useState<Exercise['category']>('Базовое вытяжение');
   const [editType, setEditType] = useState<ExerciseType>('Декомпрессия');
+  const [editDifficulty, setEditDifficulty] = useState<number>(3);
   const [editVisibility, setEditVisibility] = useState<ExerciseVisibility>('public');
   const [editImage, setEditImage] = useState(PRESET_PHOTOS[0].url);
   const [editInstructions, setEditInstructions] = useState('');
@@ -308,6 +317,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
   const [progDesc, setProgDesc] = useState('');
   const [progExerciseIds, setProgExerciseIds] = useState<string[]>([]);
   const [progExSearch, setProgExSearch] = useState('');
+  const [progDiffFilter, setProgDiffFilter] = useState<'all' | 'easy' | 'medium' | 'hard'>('all');
   const [progSaving, setProgSaving] = useState(false);
   const [progError, setProgError] = useState('');
   const [confirmDeleteProgId, setConfirmDeleteProgId] = useState<string | null>(null);
@@ -344,6 +354,12 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
       const catOk = categoryFilter === 'all' || ex.category === categoryFilter;
       const resolvedType = inferExerciseType(ex);
       const typeOk = exerciseTypeFilter === 'all' || resolvedType === exerciseTypeFilter;
+      const diff = inferExerciseDifficulty(ex);
+      const diffOk =
+        difficultyFilter === 'all' ||
+        (difficultyFilter === 'easy' && diff <= 2) ||
+        (difficultyFilter === 'medium' && diff === 3) ||
+        (difficultyFilter === 'hard' && diff >= 4);
       const exVis: ExerciseVisibility = ex.visibility === 'hidden' ? 'hidden' : 'public';
       const visOk = visibilityFilter === 'all' || exVis === visibilityFilter;
       const q = search.trim().toLowerCase();
@@ -352,9 +368,9 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
         ex.title.toLowerCase().includes(q) ||
         resolvedType.toLowerCase().includes(q) ||
         ex.targetMuscles.some((m) => m.toLowerCase().includes(q));
-      return catOk && typeOk && visOk && searchOk;
+      return catOk && typeOk && diffOk && visOk && searchOk;
     });
-  }, [exercises, categoryFilter, exerciseTypeFilter, visibilityFilter, search]);
+  }, [exercises, categoryFilter, exerciseTypeFilter, difficultyFilter, visibilityFilter, search]);
 
   const handlePhotoUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
@@ -380,6 +396,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
     setEditTitle(ex.title);
     setEditCat(ex.category);
     setEditType(inferExerciseType(ex));
+    setEditDifficulty(inferExerciseDifficulty(ex));
     setEditVisibility(ex.visibility === 'hidden' ? 'hidden' : 'public');
     setEditImage(ex.imageUrl || PRESET_PHOTOS[0].url);
     setEditInstructions(ex.instructions || '');
@@ -401,6 +418,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
           title: exTitle,
           category: exCat,
           exerciseType: exType,
+          difficulty: exDifficulty,
           visibility: exVisibility,
           imageUrl: exImage,
           instructions: exInstructions,
@@ -421,6 +439,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
       setExInstructions('');
       setExSafety('');
       setExType('Декомпрессия');
+      setExDifficulty(3);
       setExVisibility('public');
       setExImage(PRESET_PHOTOS[0].url);
       setExLimbMatrix(createDefaultLimbMatrix());
@@ -447,6 +466,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
           title: editTitle.trim(),
           category: editCat,
           exerciseType: editType,
+          difficulty: editDifficulty,
           visibility: editVisibility,
           imageUrl: editImage,
           instructions: editInstructions,
@@ -558,6 +578,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
     setProgDesc('');
     setProgExerciseIds([]);
     setProgExSearch('');
+    setProgDiffFilter('all');
     setProgError('');
     setShowCreateProgram(true);
   };
@@ -570,6 +591,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
     setProgDesc(prog.description || '');
     setProgExerciseIds([...prog.exerciseIds]);
     setProgExSearch('');
+    setProgDiffFilter('all');
     setProgError('');
     setShowCreateProgram(true);
   };
@@ -579,6 +601,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
     setEditingProgramId(null);
     setProgError('');
     setProgExSearch('');
+    setProgDiffFilter('all');
   };
 
   const handleSaveProgram = async (e: React.FormEvent) => {
@@ -692,6 +715,20 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
             ))}
           </select>
 
+          <select
+            aria-label="Фильтр по сложности"
+            value={difficultyFilter}
+            onChange={(e) =>
+              setDifficultyFilter(e.target.value as 'all' | 'easy' | 'medium' | 'hard')
+            }
+            className="px-3 py-1.5 text-xs rounded-lg border st-border st-surface cursor-pointer"
+          >
+            <option value="all">Любая сложность ★</option>
+            <option value="easy">1–2 ★ Мягкие</option>
+            <option value="medium">3 ★ Средние</option>
+            <option value="hard">4–5 ★ Сложные</option>
+          </select>
+
           {currentUser.role !== 'client' && (
             <div className="flex items-center gap-1 p-1 st-surface-muted rounded-lg border st-border">
               {(
@@ -765,6 +802,13 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
             const programExercises = prog.exerciseIds
               .map((eid) => exercises.find((ex) => ex.id === eid))
               .filter((ex): ex is Exercise => Boolean(ex));
+            const progDiff = computeProgramDifficulty(programExercises);
+            const totalMin = Math.max(
+              1,
+              Math.round(
+                programExercises.reduce((acc, ex) => acc + ex.defaultDurationSec, 0) / 60
+              )
+            );
             return (
               <div
                 key={prog.id}
@@ -781,7 +825,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                           type="button"
                           onClick={() => openEditProgramModal(prog)}
                           disabled={isProgBusy}
-                          title="Редактировать комплексную программу"
+                          title="Выбрать упражнения и редактировать программу"
                           className="p-1.5 rounded-lg st-surface-muted border st-border hover:opacity-80 st-muted hover:text-inherit transition-opacity cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
@@ -801,19 +845,39 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                   <div className="font-display text-sm font-semibold mt-1">
                     {prog.title}
                   </div>
-                  <p className="text-xs st-muted mt-1 line-clamp-2">
+                  {programExercises.length > 0 && (
+                    <div className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <DifficultyStars
+                        value={progDiff.avg}
+                        size="xs"
+                        showNumeric
+                        showLabel
+                      />
+                      <span className="text-[11px] font-mono st-muted tabular-nums">
+                        ~{totalMin} мин
+                      </span>
+                    </div>
+                  )}
+                  <p className="text-xs st-muted mt-1.5 line-clamp-2">
                     {prog.description || 'Без дополнительного описания'}
                   </p>
                   {programExercises.length > 0 && (
-                    <div className="mt-2.5 flex flex-wrap gap-1">
-                      {programExercises.slice(0, 4).map((ex, idx) => (
-                        <span
-                          key={`${prog.id}-${ex.id}-${idx}`}
-                          className="inline-flex items-center px-2 py-0.5 rounded-md st-surface-muted border st-border text-[11px] st-muted max-w-full truncate"
-                        >
-                          {idx + 1}. {ex.title}
-                        </span>
-                      ))}
+                    <div className="mt-2.5 flex flex-wrap gap-1.5">
+                      {programExercises.slice(0, 4).map((ex, idx) => {
+                        const d = inferExerciseDifficulty(ex);
+                        return (
+                          <span
+                            key={`${prog.id}-${ex.id}-${idx}`}
+                            className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md st-surface-muted border st-border text-[11px] max-w-full"
+                            title={`${ex.title} · Сложность ${d}/5`}
+                          >
+                            <span className="truncate st-muted">
+                              {idx + 1}. {ex.title}
+                            </span>
+                            <DifficultyStars value={d} size="xs" />
+                          </span>
+                        );
+                      })}
                       {programExercises.length > 4 && (
                         <span className="inline-flex items-center px-2 py-0.5 rounded-md st-surface-muted border st-border text-[11px] st-muted">
                           +{programExercises.length - 4}
@@ -870,7 +934,7 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                           className="inline-flex items-center justify-center gap-1 px-3 py-2 rounded-lg border st-border st-surface hover:opacity-90 text-xs font-medium transition-colors cursor-pointer"
                         >
                           <Pencil className="w-3.5 h-3.5" />
-                          <span>Изменить</span>
+                          <span>Упражнения</span>
                         </button>
                       )}
                     </div>
@@ -929,10 +993,16 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                       className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-[1.02]"
                     />
                   </div>
-                  <div className="px-3.5 py-2.5 rounded-b-xl group-hover:rounded-b-none">
+                  <div className="px-3.5 py-2.5 rounded-b-xl group-hover:rounded-b-none flex items-center justify-between gap-2">
                     <h4 className="font-display text-sm font-semibold truncate">
                       {ex.title}
                     </h4>
+                    <DifficultyStars
+                      value={inferExerciseDifficulty(ex)}
+                      size="xs"
+                      showNumeric
+                      className="shrink-0"
+                    />
                   </div>
                 </button>
 
@@ -951,6 +1021,16 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                     <span className="text-[11px] font-medium st-accent-text">
                       {inferExerciseType(ex)}
                     </span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-2 text-xs">
+                    <span className="st-muted">Сложность методики:</span>
+                    <DifficultyStars
+                      value={inferExerciseDifficulty(ex)}
+                      size="sm"
+                      showNumeric
+                      showLabel
+                    />
                   </div>
 
                   {!readOnly && canToggle && (
@@ -1231,6 +1311,11 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
               </div>
             </div>
 
+            <DifficultyStarPicker
+              value={exDifficulty}
+              onChange={setExDifficulty}
+            />
+
             <div>
               <label className="block text-xs font-medium mb-1">
                 Видимость упражнения в базе
@@ -1476,6 +1561,11 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                 />
               </div>
             </div>
+
+            <DifficultyStarPicker
+              value={editDifficulty}
+              onChange={setEditDifficulty}
+            />
 
             <div>
               <label className="block text-xs font-medium mb-1">
@@ -1728,100 +1818,169 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                 />
               </div>
 
-              {/* Selected sequence with reorder */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <label className="block text-xs font-medium">
-                    Последовательность в сессии ({progExerciseIds.length})
-                  </label>
-                  {progExerciseIds.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={() => setProgExerciseIds([])}
-                      className="text-[11px] st-muted hover:text-rose-500 cursor-pointer"
-                    >
-                      Очистить список
-                    </button>
-                  )}
-                </div>
-                {progExerciseIds.length === 0 ? (
-                  <div className="p-3 rounded-lg border border-dashed st-border text-xs st-muted text-center">
-                    Отметьте упражнения ниже — порядок можно менять стрелками ↑ / ↓
-                  </div>
-                ) : (
-                  <div className="space-y-1.5 border st-border rounded-lg p-2 st-surface-muted max-h-44 overflow-y-auto">
-                    {progExerciseIds.map((eid, idx) => {
-                      const ex = exercises.find((item) => item.id === eid);
-                      return (
-                        <div
-                          key={`${eid}-${idx}`}
-                          className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg st-surface border st-border text-xs"
+              {/* Selected sequence with reorder & live program difficulty summary */}
+              {(() => {
+                const selectedExList = progExerciseIds
+                  .map((eid) => exercises.find((item) => item.id === eid))
+                  .filter((ex): ex is Exercise => Boolean(ex));
+                const liveDiff = computeProgramDifficulty(selectedExList);
+                const liveMinutes = Math.max(
+                  0,
+                  Math.round(
+                    selectedExList.reduce((acc, ex) => acc + ex.defaultDurationSec, 0) / 60
+                  )
+                );
+                return (
+                  <div className="space-y-2">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <label className="block text-xs font-medium">
+                          Упражнения в программе ({progExerciseIds.length})
+                        </label>
+                        {selectedExList.length > 0 && (
+                          <span className="inline-flex items-center gap-2 px-2 py-0.5 rounded-md st-surface-muted border st-border">
+                            <DifficultyStars
+                              value={liveDiff.avg}
+                              size="xs"
+                              showNumeric
+                              showLabel
+                            />
+                            <span className="text-[10px] font-mono st-muted tabular-nums">
+                              ~{liveMinutes} мин
+                            </span>
+                          </span>
+                        )}
+                      </div>
+                      {progExerciseIds.length > 0 && (
+                        <button
+                          type="button"
+                          onClick={() => setProgExerciseIds([])}
+                          className="text-[11px] st-muted hover:text-rose-500 cursor-pointer"
                         >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-mono text-[11px] st-accent-text font-semibold shrink-0">
-                              {idx + 1}.
-                            </span>
-                            <span className="font-medium truncate">
-                              {ex ? ex.title : `Упражнение (${eid})`}
-                            </span>
-                            {ex && (
-                              <span className="hidden sm:inline text-[11px] st-muted shrink-0">
-                                · {ex.category}
-                              </span>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              onClick={() => moveProgExercise(idx, -1)}
-                              disabled={idx === 0}
-                              title="Переместить выше"
-                              className="p-1 rounded border st-border disabled:opacity-30 hover:opacity-80 cursor-pointer"
+                          Очистить список
+                        </button>
+                      )}
+                    </div>
+                    {progExerciseIds.length === 0 ? (
+                      <div className="p-3 rounded-lg border border-dashed st-border text-xs st-muted text-center">
+                        Выберите упражнения из каталога ниже — для каждого показана сложность (1–5★)
+                      </div>
+                    ) : (
+                      <div className="space-y-1.5 border st-border rounded-lg p-2 st-surface-muted max-h-44 overflow-y-auto">
+                        {progExerciseIds.map((eid, idx) => {
+                          const ex = exercises.find((item) => item.id === eid);
+                          const diffVal = ex ? inferExerciseDifficulty(ex) : 3;
+                          return (
+                            <div
+                              key={`${eid}-${idx}`}
+                              className="flex items-center justify-between gap-2 px-2.5 py-1.5 rounded-lg st-surface border st-border text-xs"
                             >
-                              <ArrowUp className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => moveProgExercise(idx, 1)}
-                              disabled={idx === progExerciseIds.length - 1}
-                              title="Переместить ниже"
-                              className="p-1 rounded border st-border disabled:opacity-30 hover:opacity-80 cursor-pointer"
-                            >
-                              <ArrowDown className="w-3.5 h-3.5" />
-                            </button>
-                            <button
-                              type="button"
-                              onClick={() => toggleProgExercise(eid)}
-                              title="Убрать из программы"
-                              className="p-1 rounded border st-border text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <span className="font-mono text-[11px] st-accent-text font-semibold shrink-0">
+                                  {idx + 1}.
+                                </span>
+                                <span className="font-medium truncate">
+                                  {ex ? ex.title : `Упражнение (${eid})`}
+                                </span>
+                                {ex && (
+                                  <DifficultyStars
+                                    value={diffVal}
+                                    size="xs"
+                                    className="shrink-0"
+                                  />
+                                )}
+                                {ex && (
+                                  <span className="hidden sm:inline text-[11px] st-muted shrink-0 font-mono">
+                                    · {ex.defaultDurationSec}с
+                                  </span>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 shrink-0">
+                                <button
+                                  type="button"
+                                  onClick={() => moveProgExercise(idx, -1)}
+                                  disabled={idx === 0}
+                                  title="Переместить выше"
+                                  className="p-1 rounded border st-border disabled:opacity-30 hover:opacity-80 cursor-pointer"
+                                >
+                                  <ArrowUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => moveProgExercise(idx, 1)}
+                                  disabled={idx === progExerciseIds.length - 1}
+                                  title="Переместить ниже"
+                                  className="p-1 rounded border st-border disabled:opacity-30 hover:opacity-80 cursor-pointer"
+                                >
+                                  <ArrowDown className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => toggleProgExercise(eid)}
+                                  title="Убрать из программы"
+                                  className="p-1 rounded border st-border text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                                >
+                                  <X className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
+                );
+              })()}
 
-              {/* Searchable exercise picker */}
+              {/* Searchable exercise picker with difficulty filter & 1-5 stars */}
               <div className="space-y-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <label className="block text-xs font-medium">
-                    Добавить / выбрать упражнения из каталога
+                    Выбор упражнений из каталога
                   </label>
-                  <input
-                    type="search"
-                    value={progExSearch}
-                    onChange={(e) => setProgExSearch(e.target.value)}
-                    placeholder="Поиск в списке..."
-                    className="px-2.5 py-1 text-xs rounded-lg border st-border st-surface min-w-[180px]"
-                  />
+                  <div className="flex flex-wrap items-center gap-1.5">
+                    <div className="flex items-center gap-0.5 p-0.5 rounded-lg st-surface-muted border st-border text-[11px]">
+                      {(
+                        [
+                          ['all', 'Все ★'],
+                          ['easy', '1–2 ★'],
+                          ['medium', '3 ★'],
+                          ['hard', '4–5 ★'],
+                        ] as const
+                      ).map(([dk, dl]) => (
+                        <button
+                          key={dk}
+                          type="button"
+                          onClick={() => setProgDiffFilter(dk)}
+                          className={`px-2 py-0.5 rounded cursor-pointer ${
+                            progDiffFilter === dk
+                              ? 'st-surface font-semibold shadow-sm'
+                              : 'st-muted hover:opacity-80'
+                          }`}
+                        >
+                          {dl}
+                        </button>
+                      ))}
+                    </div>
+                    <input
+                      type="search"
+                      value={progExSearch}
+                      onChange={(e) => setProgExSearch(e.target.value)}
+                      placeholder="Поиск..."
+                      className="px-2.5 py-1 text-xs rounded-lg border st-border st-surface min-w-[140px]"
+                    />
+                  </div>
                 </div>
-                <div className="max-h-48 overflow-y-auto space-y-1 border st-border rounded-lg p-2">
+                <div className="max-h-52 overflow-y-auto space-y-1 border st-border rounded-lg p-2">
                   {exercises
                     .filter((ex) => {
+                      const diff = inferExerciseDifficulty(ex);
+                      const diffOk =
+                        progDiffFilter === 'all' ||
+                        (progDiffFilter === 'easy' && diff <= 2) ||
+                        (progDiffFilter === 'medium' && diff === 3) ||
+                        (progDiffFilter === 'hard' && diff >= 4);
+                      if (!diffOk) return false;
                       const q = progExSearch.trim().toLowerCase();
                       if (!q) return true;
                       return (
@@ -1832,27 +1991,37 @@ export const ExercisesLibraryView: React.FC<ExercisesLibraryProps> = ({
                     .map((ex) => {
                       const checked = progExerciseIds.includes(ex.id);
                       const orderNum = checked ? progExerciseIds.indexOf(ex.id) + 1 : null;
+                      const diff = inferExerciseDifficulty(ex);
                       return (
                         <label
                           key={ex.id}
-                          className={`flex items-center gap-2.5 p-2 rounded-lg cursor-pointer text-xs transition-colors ${
+                          className={`flex items-center justify-between gap-2.5 p-2 rounded-lg cursor-pointer text-xs transition-colors ${
                             checked
                               ? 'st-surface-muted border st-border font-medium'
                               : 'hover:st-surface-muted'
                           }`}
                         >
-                          <input
-                            type="checkbox"
-                            checked={checked}
-                            onChange={() => toggleProgExercise(ex.id)}
-                          />
-                          <span className="font-medium flex-1 truncate">{ex.title}</span>
-                          {orderNum !== null && (
-                            <span className="px-1.5 py-0.5 rounded st-accent-bg text-[10px] font-mono tabular-nums">
-                              #{orderNum}
-                            </span>
-                          )}
-                          <span className="st-muted shrink-0">{ex.category}</span>
+                          <div className="flex items-center gap-2 min-w-0 flex-1">
+                            <input
+                              type="checkbox"
+                              checked={checked}
+                              onChange={() => toggleProgExercise(ex.id)}
+                            />
+                            <div className="min-w-0 flex-1">
+                              <div className="font-medium truncate">{ex.title}</div>
+                              <div className="text-[10px] st-muted truncate">
+                                {ex.category} · {ex.defaultDurationSec}с · Тяга {ex.recommendedLoadPct}%
+                              </div>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1.5 shrink-0">
+                            <DifficultyStars value={diff} size="xs" showNumeric />
+                            {orderNum !== null && (
+                              <span className="px-1.5 py-0.5 rounded st-accent-bg text-[10px] font-mono tabular-nums">
+                                #{orderNum}
+                              </span>
+                            )}
+                          </div>
                         </label>
                       );
                     })}

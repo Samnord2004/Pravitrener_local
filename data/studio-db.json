@@ -15,7 +15,7 @@
       "emailVerified": true,
       "employmentStatus": "working",
       "tokenVersion": 1,
-      "lastLoginAt": "2026-11-23 18:03"
+      "lastLoginAt": "2026-11-23 18:13"
     },
     {
       "id": "u-admin-1",
@@ -49,7 +49,7 @@
       "emailVerified": true,
       "employmentStatus": "working",
       "tokenVersion": 1,
-      "lastLoginAt": "2026-11-23 18:03",
+      "lastLoginAt": "2026-11-23 18:12",
       "trainerProfile": {
         "photoUrl": "/src/assets/images/exercise_star_stretch_1795103073739.jpg",
         "experienceYears": 9,
@@ -550,7 +550,8 @@
       "defaultDurationSec": 180,
       "recommendedLoadPct": 75,
       "exerciseType": "Декомпрессия",
-      "visibility": "public"
+      "visibility": "public",
+      "difficulty": 3
     },
     {
       "id": "ex-twist",
@@ -572,7 +573,8 @@
       "defaultDurationSec": 120,
       "recommendedLoadPct": 60,
       "exerciseType": "Оздоровительная практика",
-      "visibility": "public"
+      "visibility": "public",
+      "difficulty": 4
     },
     {
       "id": "ex-shoulder",
@@ -594,7 +596,8 @@
       "defaultDurationSec": 150,
       "recommendedLoadPct": 65,
       "exerciseType": "Релакс и дыхание",
-      "visibility": "public"
+      "visibility": "public",
+      "difficulty": 2
     },
     {
       "id": "ex-power-hold",
@@ -616,7 +619,8 @@
       "defaultDurationSec": 120,
       "recommendedLoadPct": 90,
       "exerciseType": "Силовое удержание",
-      "visibility": "public"
+      "visibility": "public",
+      "difficulty": 5
     }
   ],
   "programs": [

@@ -2112,6 +2112,10 @@ async function startServer() {
       safetyNotes: body.safetyNotes || 'Контроль дыхания и плавный набор тяги.',
       defaultDurationSec: Number(body.defaultDurationSec) || 120,
       recommendedLoadPct: Number(body.recommendedLoadPct) || 70,
+      difficulty:
+        body.difficulty !== undefined && Number.isFinite(Number(body.difficulty))
+          ? Math.max(1, Math.min(5, Math.round(Number(body.difficulty))))
+          : 3,
       visibility: body.visibility === 'hidden' ? 'hidden' : 'public',
       createdByUserId: currentUser.id,
       createdBy: currentUser.name,
@@ -2152,6 +2156,9 @@ async function startServer() {
     if (typeof body.safetyNotes === 'string') ex.safetyNotes = body.safetyNotes;
     if (typeof body.defaultDurationSec === 'number') ex.defaultDurationSec = body.defaultDurationSec;
     if (typeof body.recommendedLoadPct === 'number') ex.recommendedLoadPct = body.recommendedLoadPct;
+    if (body.difficulty !== undefined && Number.isFinite(Number(body.difficulty))) {
+      ex.difficulty = Math.max(1, Math.min(5, Math.round(Number(body.difficulty))));
+    }
     if (Array.isArray(body.targetMuscles)) ex.targetMuscles = body.targetMuscles;
     if (body.limbAngles) ex.limbAngles = body.limbAngles;
     if (body.limbAngleMatrix) {
