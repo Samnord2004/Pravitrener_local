@@ -1,0 +1,17 @@
+# Конфигурация туннеля Cloudflare Tunnel (cloudflared) для ЭТАЛОН ПРАВИЛО
+# 1. Авторизуйтесь: cloudflared tunnel login
+# 2. Создайте туннель: cloudflared tunnel create etalon-pravilo
+# 3. Привяжите домен: cloudflared tunnel route dns etalon-pravilo studio.yourdomain.ru
+# 4. Запустите: cloudflared tunnel --config deploy/cloudflared-tunnel.yml run etalon-pravilo
+
+tunnel: etalon-pravilo
+credentials-file: /root/.cloudflared/etalon-pravilo.json
+
+ingress:
+  - hostname: studio.yourdomain.ru
+    service: http://127.0.0.1:3000
+    originRequest:
+      noTLSVerify: true
+      connectTimeout: 30s
+      keepAliveConnections: 100
+  - service: http_status:404

@@ -1,0 +1,36 @@
+{
+  "name": "etalon-pravilo-desktop",
+  "version": "1.2.0",
+  "description": "Десктопный клиент и автономная станция студии ЭТАЛОН ПРАВИЛО (Windows / macOS / Linux)",
+  "main": "main.cjs",
+  "scripts": {
+    "start": "electron .",
+    "dist:win": "electron-builder --win nsis",
+    "dist:mac": "electron-builder --mac dmg",
+    "dist:linux": "electron-builder --linux AppImage"
+  },
+  "build": {
+    "appId": "ru.etalonpravilo.desktop",
+    "productName": "ЭТАЛОН ПРАВИЛО",
+    "directories": {
+      "output": "../release-desktop"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs"
+    ],
+    "win": {
+      "target": ["nsis", "portable"]
+    },
+    "mac": {
+      "target": ["dmg"]
+    },
+    "linux": {
+      "target": ["AppImage", "deb"]
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}

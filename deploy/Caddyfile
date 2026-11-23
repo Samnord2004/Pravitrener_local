@@ -1,0 +1,5 @@
+# Caddyfile с автоматическим HTTPS (Let's Encrypt) для ЭТАЛОН ПРАВИЛО
+studio.yourdomain.ru {
+    encode gzip
+    reverse_proxy 127.0.0.1:3000
+}

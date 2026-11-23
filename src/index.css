@@ -1,0 +1,375 @@
+@import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
+
+@layer base {
+  :root,
+  :root[data-style="slavic"] {
+    --font-display: 'Cormorant Infant', Georgia, serif;
+    --font-sans: 'PT Sans', system-ui, sans-serif;
+    --font-mono: 'PT Mono', monospace;
+
+    /* Славянский стиль: Тёплый лён, киноварь, янтарное золото и лесной изумруд */
+    --st-bg: #faf5ea;
+    --st-surface: #fffdf8;
+    --st-surface-muted: #f3ead8;
+    --st-border: #e2d4bc;
+    --st-text: #221c16;
+    --st-muted: #6b5e4f;
+    --st-accent: #b32b24;
+    --st-accent-hover: #96211b;
+    --st-accent-soft: #fae6e3;
+    --st-accent-text: #99221c;
+    --st-secondary: #26644e;
+    --st-gold: #b87c18;
+    --st-hero-from: #2d1814;
+    --st-hero-via: #4a231c;
+    --st-hero-to: #1b342b;
+    --st-ornament: repeating-linear-gradient(
+      90deg,
+      #b32b24 0px,
+      #b32b24 14px,
+      #c98a1c 14px,
+      #c98a1c 22px,
+      #26644e 22px,
+      #26644e 36px,
+      #f3ead8 36px,
+      #f3ead8 42px
+    );
+  }
+
+  .dark[data-style="slavic"],
+  .dark:root {
+    --st-bg: #121714;
+    --st-surface: #19211d;
+    --st-surface-muted: #222d27;
+    --st-border: #2e3d35;
+    --st-text: #f5efe3;
+    --st-muted: #b0a695;
+    --st-accent: #d94a3f;
+    --st-accent-hover: #e65d52;
+    --st-accent-soft: rgba(217, 74, 63, 0.16);
+    --st-accent-text: #f2847b;
+    --st-secondary: #439b7b;
+    --st-gold: #e0a63b;
+    --st-hero-from: #1b1311;
+    --st-hero-via: #2d1a16;
+    --st-hero-to: #13251f;
+  }
+
+  :root[data-style="japanese"] {
+    --font-display: 'Playfair Display', Georgia, serif;
+    --font-sans: 'Manrope', system-ui, sans-serif;
+    --font-mono: 'IBM Plex Mono', monospace;
+    /* Японский классический: Бумага васи, киноварь тории, зелёный чай матча и суми-э */
+    --st-bg: #f7f2e7;
+    --st-surface: #fffcf4;
+    --st-surface-muted: #efe7d6;
+    --st-border: #dfd3bc;
+    --st-text: #1f1b18;
+    --st-muted: #685e54;
+    --st-accent: #c73a2b;
+    --st-accent-hover: #a82e21;
+    --st-accent-soft: #fbe7e4;
+    --st-accent-text: #ab2d20;
+    --st-secondary: #3f6d52;
+    --st-gold: #b28728;
+    --st-hero-from: #221a17;
+    --st-hero-via: #3c221d;
+    --st-hero-to: #1f3328;
+    --st-ornament: repeating-linear-gradient(
+      90deg,
+      #c73a2b 0px,
+      #c73a2b 24px,
+      #1f1b18 24px,
+      #1f1b18 28px,
+      #b28728 28px,
+      #b28728 40px,
+      #3f6d52 40px,
+      #3f6d52 56px
+    );
+  }
+
+  .dark[data-style="japanese"] {
+    --st-bg: #141210;
+    --st-surface: #1e1a17;
+    --st-surface-muted: #29231e;
+    --st-border: #3a322b;
+    --st-text: #f5efe4;
+    --st-muted: #b0a496;
+    --st-accent: #e0503e;
+    --st-accent-hover: #ed6452;
+    --st-accent-soft: rgba(224, 80, 62, 0.17);
+    --st-accent-text: #f58c7e;
+    --st-secondary: #5c9974;
+    --st-gold: #d9ac48;
+    --st-hero-from: #181311;
+    --st-hero-via: #2e1b18;
+    --st-hero-to: #18271f;
+  }
+
+  :root[data-style="viking"] {
+    --font-display: 'Oswald', sans-serif;
+    --font-sans: 'Rubik', system-ui, sans-serif;
+    --font-mono: 'JetBrains Mono', monospace;
+    /* Стиль викинг: Скандинавский камень, кованая бронза, фьорд и рунный багрянец */
+    --st-bg: #f1f4f7;
+    --st-surface: #ffffff;
+    --st-surface-muted: #e5ebf1;
+    --st-border: #cfd9e3;
+    --st-text: #161f29;
+    --st-muted: #556372;
+    --st-accent: #b86a19;
+    --st-accent-hover: #995510;
+    --st-accent-soft: #faecd9;
+    --st-accent-text: #94520f;
+    --st-secondary: #1b6472;
+    --st-gold: #c98622;
+    --st-hero-from: #101c26;
+    --st-hero-via: #192d3d;
+    --st-hero-to: #2d2117;
+    --st-ornament: repeating-linear-gradient(
+      90deg,
+      #1b6472 0px,
+      #1b6472 18px,
+      #b86a19 18px,
+      #b86a19 30px,
+      #161f29 30px,
+      #161f29 34px,
+      #9e342c 34px,
+      #9e342c 48px
+    );
+  }
+
+  .dark[data-style="viking"] {
+    --st-bg: #0d141c;
+    --st-surface: #141f2b;
+    --st-surface-muted: #1c2b3a;
+    --st-border: #2a3d50;
+    --st-text: #edf2f7;
+    --st-muted: #98a9ba;
+    --st-accent: #de892c;
+    --st-accent-hover: #eb9a3f;
+    --st-accent-soft: rgba(222, 137, 44, 0.18);
+    --st-accent-text: #f3ad5c;
+    --st-secondary: #3495a6;
+    --st-gold: #e5a93c;
+    --st-hero-from: #0b131b;
+    --st-hero-via: #152636;
+    --st-hero-to: #261c14;
+  }
+
+  :root[data-style="modern"] {
+    --font-display: 'Exo 2', sans-serif;
+    --font-sans: 'Inter', system-ui, sans-serif;
+    --font-mono: 'Fira Code', monospace;
+    /* Яркий классический ЭТАЛОН: Лазурь и тёплый янтарь */
+    --st-bg: #f3f7fa;
+    --st-surface: #ffffff;
+    --st-surface-muted: #e8f0f6;
+    --st-border: #d4e1ec;
+    --st-text: #0f172a;
+    --st-muted: #526275;
+    --st-accent: #08819e;
+    --st-accent-hover: #066982;
+    --st-accent-soft: #e0f4f9;
+    --st-accent-text: #076c85;
+    --st-secondary: #15845d;
+    --st-gold: #d97706;
+    --st-hero-from: #0c1b2a;
+    --st-hero-via: #0f3042;
+    --st-hero-to: #0d3a35;
+    --st-ornament: linear-gradient(90deg, #08819e 0%, #15845d 50%, #d97706 100%);
+  }
+
+  .dark[data-style="modern"] {
+    --st-bg: #0b121e;
+    --st-surface: #121c2d;
+    --st-surface-muted: #1a283f;
+    --st-border: #273957;
+    --st-text: #f1f5f9;
+    --st-muted: #94a3b8;
+    --st-accent: #14a3c7;
+    --st-accent-hover: #22b8dd;
+    --st-accent-soft: rgba(20, 163, 199, 0.16);
+    --st-accent-text: #4dd0ef;
+    --st-secondary: #2ab582;
+    --st-gold: #f59e0b;
+    --st-hero-from: #09101b;
+    --st-hero-via: #0d2536;
+    --st-hero-to: #0c2c28;
+  }
+
+  html,
+  body,
+  button,
+  input,
+  select,
+  textarea {
+    font-family: var(--font-sans);
+  }
+
+  body {
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+    background-color: var(--st-bg);
+    color: var(--st-text);
+  }
+
+  h1, h2, h3, .font-display {
+    font-family: var(--font-display);
+  }
+
+  .font-mono {
+    font-family: var(--font-mono);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .tabular-nums {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Semantic Theme Surface & Accent Utilities */
+.st-canvas {
+  position: relative;
+  isolation: isolate;
+  background-color: var(--st-bg);
+  color: var(--st-text);
+}
+
+.st-canvas::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image: var(--st-bg-image, none);
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  opacity: var(--st-bg-opacity, 0);
+  transition: opacity 150ms ease;
+}
+
+.st-surface {
+  background-color: var(--st-surface);
+  color: var(--st-text);
+  border-color: var(--st-border);
+}
+
+.st-surface-muted {
+  background-color: var(--st-surface-muted);
+  border-color: var(--st-border);
+}
+
+:root[data-has-bg="true"] .st-surface {
+  background-color: color-mix(in srgb, var(--st-surface) 88%, transparent);
+  backdrop-filter: blur(8px);
+}
+
+:root[data-has-bg="true"] .st-surface-muted {
+  background-color: color-mix(in srgb, var(--st-surface-muted) 84%, transparent);
+  backdrop-filter: blur(6px);
+}
+
+.st-border {
+  border-color: var(--st-border);
+}
+
+.st-muted {
+  color: var(--st-muted);
+}
+
+.st-accent-bg {
+  background-color: var(--st-accent);
+  color: #ffffff;
+}
+
+.st-accent-bg:hover {
+  background-color: var(--st-accent-hover);
+}
+
+.st-accent-soft {
+  background-color: var(--st-accent-soft);
+  color: var(--st-accent-text);
+}
+
+.st-accent-text {
+  color: var(--st-accent-text);
+}
+
+.st-secondary-text {
+  color: var(--st-secondary);
+}
+
+.st-gold-text {
+  color: var(--st-gold);
+}
+
+.st-ornament-bar {
+  height: 4px;
+  width: 100%;
+  background: var(--st-ornament);
+}
+
+.st-hero-gradient {
+  background: linear-gradient(135deg, var(--st-hero-from) 0%, var(--st-hero-via) 55%, var(--st-hero-to) 100%);
+}
+
+/* Warm cultural backdrop tint for main workspace cards when using slate utility classes */
+:root[data-style="slavic"] .bg-slate-50:not(.st-keep-neutral),
+:root[data-style="japanese"] .bg-slate-50:not(.st-keep-neutral) {
+  background-color: var(--st-surface-muted);
+}
+
+:root[data-style="slavic"] .bg-white:not(.st-keep-white),
+:root[data-style="japanese"] .bg-white:not(.st-keep-white) {
+  background-color: var(--st-surface);
+}
+
+:root[data-style="slavic"] .border-slate-200,
+:root[data-style="japanese"] .border-slate-200,
+:root[data-style="viking"] .border-slate-200 {
+  border-color: var(--st-border);
+}
+
+.dark[data-style="slavic"] .dark\:bg-slate-950,
+.dark[data-style="japanese"] .dark\:bg-slate-950,
+.dark[data-style="viking"] .dark\:bg-slate-950 {
+  background-color: var(--st-bg);
+}
+
+.dark[data-style="slavic"] .dark\:bg-slate-900,
+.dark[data-style="japanese"] .dark\:bg-slate-900,
+.dark[data-style="viking"] .dark\:bg-slate-900 {
+  background-color: var(--st-surface);
+}
+
+.dark[data-style="slavic"] .dark\:border-slate-800,
+.dark[data-style="japanese"] .dark\:border-slate-800,
+.dark[data-style="viking"] .dark\:border-slate-800 {
+  border-color: var(--st-border);
+}
+
+/* Custom subtle scrollbars */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.35);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.55);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, ::before, ::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

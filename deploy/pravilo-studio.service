@@ -1,0 +1,15 @@
+[Unit]
+Description=Etalon Pravilo Studio Server
+After=network.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/etalon-pravilo
+Environment=NODE_ENV=production
+Environment=SESSION_SECRET=REPLACE_WITH_LONG_RANDOM_SECRET
+ExecStart=/usr/bin/npx tsx server.ts
+Restart=always
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target

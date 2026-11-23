@@ -1,0 +1,6 @@
+{
+  "name": "АТЛАНТ · ПравИло Studio",
+  "description": "Многоролевая платформа управления сетью студий тренажёра ПравИло: расписание, запись клиентов, живая телеметрия датчиков BLE и ESP32, база упражнений, рассылки и PWA-приложение.",
+  "requestFramePermissions": ["bluetooth"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

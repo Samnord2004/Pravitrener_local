@@ -1,0 +1,1851 @@
+{
+  "users": [
+    {
+      "id": "u-owner",
+      "login": "owner",
+      "passwordHash": "$2b$08$rGjQYf05414xgRq7GJykoOvZBy7VxzM97quvVutZphW2iFxPOZX9u",
+      "name": "Александр Соколов",
+      "role": "owner",
+      "studioId": null,
+      "phone": "+7 (916) 440-10-01",
+      "email": "owner@atlant-pravilo.ru",
+      "telegramHandle": "@sokolov_atlant",
+      "avatarInitials": "АС",
+      "active": true,
+      "emailVerified": true,
+      "employmentStatus": "working",
+      "tokenVersion": 1,
+      "lastLoginAt": "2026-11-23 18:03"
+    },
+    {
+      "id": "u-admin-1",
+      "login": "admin",
+      "passwordHash": "$2b$08$ZT8QFNoYoTK40/6ExWXUC.mZY8q/VRwPXdPhmkDR16ZeBOjU4bS26",
+      "name": "Елена Морозова",
+      "role": "admin",
+      "studioId": "st-tverskaya",
+      "phone": "+7 (916) 440-10-02",
+      "email": "admin@atlant-pravilo.ru",
+      "telegramHandle": "@morozova_admin",
+      "avatarInitials": "ЕМ",
+      "active": true,
+      "emailVerified": true,
+      "employmentStatus": "working",
+      "tokenVersion": 1,
+      "lastLoginAt": "2026-11-23 15:06"
+    },
+    {
+      "id": "u-trainer-1",
+      "login": "trainer",
+      "passwordHash": "$2b$08$o95kVK1irDMApOGDpo53PeigPPTFowsRm5eR2OfwvX5xzLoZ26xFu",
+      "name": "Дмитрий Волков",
+      "role": "trainer",
+      "studioId": "st-tverskaya",
+      "phone": "+7 (916) 440-10-03",
+      "email": "volkov@atlant-pravilo.ru",
+      "telegramHandle": "@volkov_pravilo",
+      "avatarInitials": "ДВ",
+      "active": true,
+      "emailVerified": true,
+      "employmentStatus": "working",
+      "tokenVersion": 1,
+      "lastLoginAt": "2026-11-23 18:03",
+      "trainerProfile": {
+        "photoUrl": "/src/assets/images/exercise_star_stretch_1795103073739.jpg",
+        "experienceYears": 9,
+        "specialization": "Биомеханическая декомпрессия, коррекция осанки и работа с поясницей",
+        "bio": "Сертифицированный специалист по оздоровительному вытяжению на тренажёре ПравИло и адаптивной физической культуре. Провожу первичную диагностику по лазерному уровню, миографии MYOblue и биоимпедансу до и после сессии.",
+        "workStyle": "Точный и мягкий вход в тягу без рывков: постепенная адаптация фасций и контроль симметрии левой/правой сторон по датчикам ESP32.",
+        "skills": [
+          "Декомпрессия позвоночника",
+          "Миография (MYOblue EMG)",
+          "Оценка осанки и лазерный уровень",
+          "Коррекция сколиотической дуги"
+        ],
+        "highlights": [
+          "Более 3 400 проведённых индивидуальных сессий на ПравИло",
+          "Сопровождение офисных руководителей и спортсменов с болями в пояснице",
+          "Ведение наглядного фотопротокола ДО и ПОСЛЕ с замером углов перекоса"
+        ],
+        "socials": {
+          "telegram": "https://t.me/volkov_pravilo"
+        }
+      }
+    },
+    {
+      "id": "u-trainer-2",
+      "login": "trainer2",
+      "passwordHash": "$2b$08$caJq11NRX96ugbB6UkdDqODXPviRTdESMxp3CRhZXC1k3xr2YYEDm",
+      "name": "Артём Крылов",
+      "role": "trainer",
+      "studioId": "st-khamovniki",
+      "phone": "+7 (916) 440-10-04",
+      "email": "krylov@atlant-pravilo.ru",
+      "telegramHandle": "@krylov_biomech",
+      "avatarInitials": "АК",
+      "active": true,
+      "emailVerified": true,
+      "employmentStatus": "working",
+      "tokenVersion": 1,
+      "trainerProfile": {
+        "photoUrl": "/src/assets/images/exercise_shoulder_open_1795103072729.jpg",
+        "experienceYears": 7,
+        "specialization": "Нейро-мышечный фитнес, баланс-бревно и силовое восстановление",
+        "bio": "Мастер спорта по спортивной гимнастике, специалист по кинезиологии и восстановлению опорно-двигательного аппарата. Выстраиваю индивидуальные программы с фиксацией углов и нагрузок.",
+        "workStyle": "Энергичный методический подход: сочетание декомпрессии на ПравИло с упражнениями на баланс-бревне и дыхательной стабилизацией.",
+        "skills": [
+          "Нейро-мышечная коррекция",
+          "Баланс-бревно и проприоцепция",
+          "Восстановление после спорта",
+          "Мобилизация грудного отдела"
+        ],
+        "highlights": [
+          "Автор программ подготовки к триатлону и горнолыжному сезону",
+          "Индивидуальный подбор стоек и углов для каждой конечности"
+        ],
+        "socials": {
+          "telegram": "https://t.me/krylov_biomech"
+        }
+      },
+      "lastLoginAt": "2026-11-23 18:03"
+    },
+    {
+      "id": "u-trainer-3",
+      "login": "trainer3",
+      "passwordHash": "$2b$08$JHC8MoYsWqcZmIYDMuUB4ejLL5NT9kQznd00hV.J3ZRjp8VBuGtVq",
+      "name": "Мария Белова",
+      "role": "trainer",
+      "studioId": "st-petrograd",
+      "phone": "+7 (921) 510-22-03",
+      "email": "belova@atlant-pravilo.ru",
+      "telegramHandle": "@belova_spb",
+      "avatarInitials": "МБ",
+      "active": true,
+      "emailVerified": true,
+      "employmentStatus": "working",
+      "tokenVersion": 1,
+      "trainerProfile": {
+        "photoUrl": "/src/assets/images/exercise_twist_hang_1795103073130.jpg",
+        "experienceYears": 6,
+        "specialization": "Мягкое раскрытие грудного отдела, релакс-вытяжение и антистресс-практики",
+        "bio": "Инструктор оздоровительных практик, специалист по мягкому вытяжению и телесной терапии. Помогаю снять хронические зажимы шеи и плечевого пояса.",
+        "workStyle": "Бережный, внимательный ритм тренировки под спокойное диафрагмальное дыхание и плавный контроль пульса.",
+        "skills": [
+          "Дыхательные практики",
+          "Мобилизация грудного отдела",
+          "Работа с триггерными точками",
+          "Декомпрессия позвоночника"
+        ],
+        "highlights": [
+          "Специализация на бережном старте для новичков и восстановления подвижности шеи",
+          "Подробная визуальная диагностика плечевого пояса и осанки"
+        ],
+        "socials": {
+          "telegram": "https://t.me/belova_spb"
+        }
+      }
+    },
+    {
+      "id": "u-client-1",
+      "login": "client",
+      "passwordHash": "$2b$08$85B3hy/BrkuIEugCGXy7Du0JaK.n1WQIRw7c8PbEdKPT79DeToaum",
+      "name": "Игорь Назаров",
+      "role": "client",
+      "studioId": "st-tverskaya",
+      "phone": "+7 (903) 712-44-89",
+      "email": "nazarov.igor@mail.ru",
+      "telegramHandle": "@igor_nazarov",
+      "avatarInitials": "ИН",
+      "active": true,
+      "emailVerified": true,
+      "employmentStatus": "working",
+      "tokenVersion": 1,
+      "lastLoginAt": "2026-11-23 18:03"
+    }
+  ],
+  "studios": [
+    {
+      "id": "st-tverskaya",
+      "name": "ЭТАЛОН ПРАВИЛО · Тверская",
+      "city": "Москва",
+      "address": "ул. Тверская, 18Б, 3 этаж",
+      "phone": "+7 (495) 120-88-10",
+      "openHours": "08:00 – 22:00",
+      "framesCount": 2,
+      "active": true,
+      "monthlyTargetRevenue": 650000,
+      "weekdayOpenHours": "08:00 – 22:00",
+      "weekendOpenHours": "08:00 – 22:00",
+      "description": "Флагманская студия в центре Москвы в 3 минутах от метро Тверская. Два просторных зала с рамами ПравИло с телеметрическим контролем тяги и симметрии, зона биоимпедансного анализа и уютная чайная комната.",
+      "photos": [
+        "/src/assets/images/studio_hero_pravilo_1795103073467.jpg",
+        "/src/assets/images/exercise_star_stretch_1795103073739.jpg"
+      ],
+      "email": "tverskaya@etalon-pravilo.ru",
+      "routeHint": "3 мин от м. Тверская / Пушкинская, вход со стороны Мамоновского переулка",
+      "socials": {
+        "website": "https://etalon-pravilo.ru/tverskaya",
+        "telegram": "https://t.me/etalon_tverskaya",
+        "vk": "https://vk.com/etalon_pravilo",
+        "whatsapp": "https://wa.me/74951208810"
+      }
+    },
+    {
+      "id": "st-khamovniki",
+      "name": "ЭТАЛОН ПРАВИЛО · Хамовники",
+      "city": "Москва",
+      "address": "Комсомольский пр-т, 24с1",
+      "phone": "+7 (495) 120-88-20",
+      "openHours": "09:00 – 22:00",
+      "framesCount": 2,
+      "active": true,
+      "monthlyTargetRevenue": 540000,
+      "description": "Тихая студия бизнес-класса с бесплатной парковкой, двумя тренажёрами ПравИло, баланс-бревном и оборудованием для восстановления после интенсивного спорта.",
+      "photos": [
+        "/src/assets/images/exercise_shoulder_open_1795103072729.jpg",
+        "/src/assets/images/studio_hero_pravilo_1795103073467.jpg"
+      ],
+      "email": "khamovniki@etalon-pravilo.ru",
+      "routeHint": "2 мин от м. Фрунзенская, бесплатная гостевая парковка во дворе",
+      "socials": {
+        "website": "https://etalon-pravilo.ru/khamovniki",
+        "telegram": "https://t.me/etalon_khamovniki",
+        "vk": "https://vk.com/etalon_pravilo",
+        "whatsapp": "https://wa.me/74951208820"
+      }
+    },
+    {
+      "id": "st-petrograd",
+      "name": "ЭТАЛОН ПРАВИЛО · Петроградская",
+      "city": "Санкт-Петербург",
+      "address": "Каменноостровский пр-т, 38",
+      "phone": "+7 (812) 409-55-12",
+      "openHours": "09:00 – 21:00",
+      "framesCount": 1,
+      "active": true,
+      "monthlyTargetRevenue": 420000,
+      "description": "Камерная петербургская студия с индивидуальным приёмом, высоким потолком, деревянной рамой ручной работы и комплексной диагностикой осанки до и после сессии.",
+      "photos": [
+        "/src/assets/images/exercise_twist_hang_1795103073130.jpg",
+        "/src/assets/images/studio_hero_pravilo_1795103073467.jpg"
+      ],
+      "email": "spb@etalon-pravilo.ru",
+      "routeHint": "4 мин от м. Петроградская, 2 этаж, вывеска во дворе-курдонере",
+      "socials": {
+        "website": "https://etalon-pravilo.ru/spb",
+        "telegram": "https://t.me/etalon_spb",
+        "vk": "https://vk.com/etalon_pravilo_spb",
+        "whatsapp": "https://wa.me/78124095512"
+      }
+    }
+  ],
+  "schedules": [
+    {
+      "id": "sch-1",
+      "trainerId": "u-trainer-1",
+      "studioId": "st-tverskaya",
+      "dayOfWeek": 0,
+      "startTime": "09:00",
+      "endTime": "20:00",
+      "active": true
+    },
+    {
+      "id": "sch-2",
+      "trainerId": "u-trainer-1",
+      "studioId": "st-tverskaya",
+      "dayOfWeek": 1,
+      "startTime": "09:00",
+      "endTime": "20:00",
+      "active": true
+    },
+    {
+      "id": "sch-3",
+      "trainerId": "u-trainer-1",
+      "studioId": "st-tverskaya",
+      "dayOfWeek": 2,
+      "startTime": "10:00",
+      "endTime": "21:00",
+      "active": true
+    },
+    {
+      "id": "sch-4",
+      "trainerId": "u-trainer-1",
+      "studioId": "st-tverskaya",
+      "dayOfWeek": 3,
+      "startTime": "09:00",
+      "endTime": "20:00",
+      "active": true
+    },
+    {
+      "id": "sch-5",
+      "trainerId": "u-trainer-1",
+      "studioId": "st-tverskaya",
+      "dayOfWeek": 4,
+      "startTime": "09:00",
+      "endTime": "19:00",
+      "active": true
+    },
+    {
+      "id": "sch-6",
+      "trainerId": "u-trainer-2",
+      "studioId": "st-khamovniki",
+      "dayOfWeek": 0,
+      "startTime": "10:00",
+      "endTime": "21:00",
+      "active": true
+    },
+    {
+      "id": "sch-7",
+      "trainerId": "u-trainer-2",
+      "studioId": "st-khamovniki",
+      "dayOfWeek": 2,
+      "startTime": "10:00",
+      "endTime": "21:00",
+      "active": true
+    },
+    {
+      "id": "sch-8",
+      "trainerId": "u-trainer-2",
+      "studioId": "st-khamovniki",
+      "dayOfWeek": 4,
+      "startTime": "10:00",
+      "endTime": "21:00",
+      "active": true
+    },
+    {
+      "id": "sch-9",
+      "trainerId": "u-trainer-3",
+      "studioId": "st-petrograd",
+      "dayOfWeek": 1,
+      "startTime": "09:00",
+      "endTime": "20:00",
+      "active": true
+    },
+    {
+      "id": "sch-10",
+      "trainerId": "u-trainer-3",
+      "studioId": "st-petrograd",
+      "dayOfWeek": 3,
+      "startTime": "09:00",
+      "endTime": "20:00",
+      "active": true
+    }
+  ],
+  "services": [
+    {
+      "id": "srv-diag",
+      "studioId": "all",
+      "name": "Первичная диагностика + ПравИло",
+      "description": "Биомеханическая оценка симметрии, замер АД и веса на Xiaomi Scale, тестовое вытяжение с миографией MYOblue.",
+      "durationMin": 60,
+      "priceRub": 3500,
+      "active": true,
+      "category": "wellness",
+      "sortOrder": 1
+    },
+    {
+      "id": "srv-base",
+      "studioId": "all",
+      "name": "Индивидуальная сессия ПравИло",
+      "description": "Полноценная 60-минутная тренировка с тренером, контролем нагрузки на конечности ESP32 и PDF-отчётом.",
+      "durationMin": 60,
+      "priceRub": 4200,
+      "active": true,
+      "category": "wellness",
+      "sortOrder": 2
+    },
+    {
+      "id": "srv-deep",
+      "studioId": "all",
+      "name": "Глубокая декомпрессия + миография",
+      "description": "Расширенная 90-минутная сессия с ротационными техниками, кардиоконтролем Wahoo TICKR FIT и разбором ЭМГ.",
+      "durationMin": 90,
+      "priceRub": 5600,
+      "active": true,
+      "category": "sport",
+      "sortOrder": 3
+    },
+    {
+      "id": "srv-recovery",
+      "studioId": "all",
+      "name": "Восстановительное вытяжение (спина/шея)",
+      "description": "Мягкая разгрузка поясничного и грудного отделов под постоянным телеметрическим контролем.",
+      "durationMin": 45,
+      "priceRub": 3200,
+      "active": true,
+      "category": "relax",
+      "sortOrder": 4
+    },
+    {
+      "id": "srv-fitness",
+      "studioId": "all",
+      "name": "Нейро-мышечный фитнес + баланс бревно",
+      "category": "fitness",
+      "description": "Комплекс на координацию, глубокие стабилизаторы и баланс-бревно с телеметрическим контролем симметрии.",
+      "durationMin": 60,
+      "priceRub": 3800,
+      "sortOrder": 5,
+      "active": true
+    }
+  ],
+  "promos": [
+    {
+      "id": "pr-1",
+      "code": "FIRST20",
+      "title": "Скидка 20% на первое занятие",
+      "discountPercent": 20,
+      "validUntil": "2027-01-19",
+      "studioId": "all",
+      "active": true,
+      "usageCount": 14
+    },
+    {
+      "id": "pr-2",
+      "code": "SPINE15",
+      "title": "Осенний курс декомпрессии −15%",
+      "discountPercent": 15,
+      "validUntil": "2026-12-20",
+      "studioId": "st-tverskaya",
+      "active": true,
+      "usageCount": 7
+    }
+  ],
+  "subscriptionPlans": [
+    {
+      "id": "plan-4",
+      "name": "Абонемент · 4 тренировки",
+      "type": "subscription",
+      "sessionsCount": 4,
+      "priceRub": 14800,
+      "validityDays": 45,
+      "description": "Базовый цикл адаптации и снятия мышечных зажимов (3 700 ₽/сессия).",
+      "active": true
+    },
+    {
+      "id": "plan-8",
+      "name": "Абонемент · 8 тренировок",
+      "type": "subscription",
+      "sessionsCount": 8,
+      "priceRub": 27200,
+      "validityDays": 90,
+      "description": "Оптимальный курс системной правки и выравнивания симметрии (3 400 ₽/сессия).",
+      "active": true
+    },
+    {
+      "id": "plan-cert-3",
+      "name": "Подарочный сертификат · 3 сессии",
+      "type": "certificate",
+      "sessionsCount": 3,
+      "priceRub": 11500,
+      "validityDays": 180,
+      "description": "Именной или электронный сертификат с активацией по коду в любой студии сети.",
+      "active": true
+    }
+  ],
+  "clientSubscriptions": [
+    {
+      "id": "csub-1",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "planId": "plan-8",
+      "planName": "Абонемент · 8 тренировок",
+      "type": "subscription",
+      "code": "AB-8421",
+      "totalSessions": 8,
+      "remainingSessions": 5,
+      "purchasedAt": "2026-11-02",
+      "expiresAt": "2027-01-31",
+      "studioId": "st-tverskaya",
+      "status": "active"
+    },
+    {
+      "id": "csub-2",
+      "clientId": "cl-2",
+      "clientName": "Ольга Смирнова",
+      "planId": "plan-cert-3",
+      "planName": "Подарочный сертификат · 3 сессии",
+      "type": "certificate",
+      "code": "GIFT-9904",
+      "totalSessions": 3,
+      "remainingSessions": 2,
+      "purchasedAt": "2026-11-10",
+      "expiresAt": "2027-05-09",
+      "studioId": "st-tverskaya",
+      "status": "active"
+    },
+    {
+      "id": "csub-3",
+      "clientId": "cl-3",
+      "clientName": "Максим Лебедев",
+      "planId": "plan-4",
+      "planName": "Абонемент · 4 тренировки",
+      "type": "subscription",
+      "code": "AB-7712",
+      "totalSessions": 4,
+      "remainingSessions": 1,
+      "purchasedAt": "2026-10-26",
+      "expiresAt": "2026-12-10",
+      "studioId": "st-khamovniki",
+      "status": "active"
+    }
+  ],
+  "subscriptionUsages": [
+    {
+      "id": "su-1",
+      "clientSubscriptionId": "csub-1",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "planName": "Абонемент · 8 тренировок",
+      "bookingId": "bk-past-1",
+      "sessionId": "ses-1",
+      "usedAt": "2026-11-15 18:00",
+      "delta": -1,
+      "note": "Списание по завершении сессии «Первая тренировка»",
+      "studioId": "st-tverskaya"
+    },
+    {
+      "id": "su-2",
+      "clientSubscriptionId": "csub-1",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "planName": "Абонемент · 8 тренировок",
+      "bookingId": "bk-past-2",
+      "sessionId": "ses-2",
+      "usedAt": "2026-11-18 19:00",
+      "delta": -1,
+      "note": "Списание по завершении сессии «Вторая тренировка»",
+      "studioId": "st-tverskaya"
+    },
+    {
+      "id": "su-3",
+      "clientSubscriptionId": "csub-2",
+      "clientId": "cl-2",
+      "clientName": "Ольга Смирнова",
+      "planName": "Подарочный сертификат · 3 сессии",
+      "usedAt": "2026-11-19 14:30",
+      "delta": -1,
+      "note": "Активация сертификата GIFT-9904 на первичную сессию",
+      "studioId": "st-tverskaya"
+    }
+  ],
+  "exercises": [
+    {
+      "id": "ex-star",
+      "title": "Горизонтальная «Звёздочка»",
+      "category": "Базовое вытяжение",
+      "imageUrl": "/src/assets/images/exercise_star_stretch_1795103073739.jpg",
+      "instructions": "Клиент располагается горизонтально лицом вниз. Манжеты фиксируются на лучезапястных и голеностопных суставах. Плавный набор тяги лебёдкой по 2–3 кг до отрыва корпуса на 15–20 см от пола. Дыхание ровное диафрагмальное, на выдохе — расслабление околопозвоночных мышц.",
+      "targetMuscles": [
+        "Широчайшие мышцы спины",
+        "Разгибатели позвоночника",
+        "Большая грудная",
+        "Подвздошно-поясничная"
+      ],
+      "limbAngles": {
+        "wrists": "Пронация 15°, отведение 45° от оси корпуса",
+        "ankles": "Нейтральное положение, отведение 35°",
+        "torsoAngle": "0° (строгая горизонталь, без прогиба в пояснице)"
+      },
+      "safetyNotes": "Контролировать пульс (< 135 уд/мин) и симметрию тяги левой/правой сторон (допустимая дельта ≤ 8%). При дискомфорте в кистях немедленно снизить тягу на 10%.",
+      "defaultDurationSec": 180,
+      "recommendedLoadPct": 75,
+      "exerciseType": "Декомпрессия",
+      "visibility": "public"
+    },
+    {
+      "id": "ex-twist",
+      "title": "Диагональное скручивание (Винт)",
+      "category": "Ротация",
+      "imageUrl": "/src/assets/images/exercise_twist_hang_1795103073130.jpg",
+      "instructions": "После базового натяжения ослабляется одна диагональная пара тросов на 10–15% с последующей мягкой ротацией таза и плечевого пояса в противоположные стороны. Удерживать позицию 40 секунд на каждую диагональ.",
+      "targetMuscles": [
+        "Косые мышцы живота",
+        "Глубокие ротаторы позвоночника",
+        "Квадратная мышца поясницы"
+      ],
+      "limbAngles": {
+        "wrists": "Верхняя рука 60° вверх, нижняя 30° от корпуса",
+        "ankles": "Перекрёстная проекция 25°–35°",
+        "torsoAngle": "Ротация 20°–30° вокруг продольной оси"
+      },
+      "safetyNotes": "Запрещены резкие рывки в фазе ротации. При грыжах в острой стадии угол скручивания ограничить до 10°.",
+      "defaultDurationSec": 120,
+      "recommendedLoadPct": 60,
+      "exerciseType": "Оздоровительная практика",
+      "visibility": "public"
+    },
+    {
+      "id": "ex-shoulder",
+      "title": "Раскрытие грудного отдела",
+      "category": "Грудной отдел",
+      "imageUrl": "/src/assets/images/exercise_shoulder_open_1795103072729.jpg",
+      "instructions": "Верхние ролики переводятся в повышенную точку крепления (под углом 30° вверх). Клиент выполняет мягкое провисание грудной клетки вперёд с плавным сведением лопаток на вдохе и глубоким расслаблением на выдохе.",
+      "targetMuscles": [
+        "Малая и большая грудные",
+        "Трапециевидная (средняя порция)",
+        "Ромбовидные мышцы"
+      ],
+      "limbAngles": {
+        "wrists": "Супинация 10°, подъём 30° над горизонталью",
+        "ankles": "Фиксация в нижней направляющей под 15°",
+        "torsoAngle": "Наклон грудины 20° к горизонтали"
+      },
+      "safetyNotes": "Избегать переразгибания шейного отдела — взгляд направлен вниз и вперёд под 45°.",
+      "defaultDurationSec": 150,
+      "recommendedLoadPct": 65,
+      "exerciseType": "Релакс и дыхание",
+      "visibility": "public"
+    },
+    {
+      "id": "ex-power-hold",
+      "title": "Изометрическое удержание в висе",
+      "category": "Силовое удержание",
+      "imageUrl": "/src/assets/images/studio_hero_pravilo_1795103073467.jpg",
+      "instructions": "На максимальной комфортной тяге клиент активирует глубокий мышечный корсет на 10 секунд (мягкое сведение конечностей к центру на 1–2 см), затем полностью отпускает напряжение на 20 секунд под контролем ЭМГ.",
+      "targetMuscles": [
+        "Поперечная мышца живота",
+        "Мышцы кора",
+        "Стабилизаторы плеча и таза"
+      ],
+      "limbAngles": {
+        "wrists": "Нейтральный хват, угол 40°",
+        "ankles": "Отведение 30°",
+        "torsoAngle": "0° нейтральная ось позвоночника"
+      },
+      "safetyNotes": "Не задерживать дыхание во время изометрического сокращения (исключить пробу Вальсальвы). Контролировать АД.",
+      "defaultDurationSec": 120,
+      "recommendedLoadPct": 90,
+      "exerciseType": "Силовое удержание",
+      "visibility": "public"
+    }
+  ],
+  "programs": [
+    {
+      "id": "prog-1",
+      "title": "Первая тренировка (Адаптация и диагностика)",
+      "level": "Первая тренировка",
+      "description": "Мягкое знакомство с тренажёром, диагностика мышечного баланса по 4 конечностям и безопасная декомпрессия.",
+      "exerciseIds": [
+        "ex-star",
+        "ex-shoulder"
+      ],
+      "createdBy": "Дмитрий Волков",
+      "createdAt": "2026-11-15"
+    },
+    {
+      "id": "prog-2",
+      "title": "Вторая тренировка (Глубокая симметрия)",
+      "level": "Вторая тренировка",
+      "description": "Последовательное включение диагональных ротаций и раскрытие грудного отдела под ЭМГ-контролем.",
+      "exerciseIds": [
+        "ex-star",
+        "ex-shoulder",
+        "ex-twist"
+      ],
+      "createdBy": "Дмитрий Волков",
+      "createdAt": "2026-11-18"
+    },
+    {
+      "id": "prog-3",
+      "title": "Индивидуальный комплекс · Игорь Назаров",
+      "level": "Индивидуальная",
+      "clientId": "cl-1",
+      "description": "Программа коррекции правосторонней асимметрии поясницы и укрепления глубокого кора.",
+      "exerciseIds": [
+        "ex-star",
+        "ex-twist",
+        "ex-power-hold"
+      ],
+      "createdBy": "Дмитрий Волков",
+      "createdAt": "2026-11-19"
+    }
+  ],
+  "clients": [
+    {
+      "id": "cl-1",
+      "userId": "u-client-1",
+      "name": "Игорь Назаров",
+      "gender": "male",
+      "phone": "+7 (903) 712-44-89",
+      "email": "nazarov.igor@mail.ru",
+      "telegram": "@igor_nazarov",
+      "studioId": "st-tverskaya",
+      "birthYear": 1986,
+      "birthDate": "1986-04-12",
+      "goal": "Снятие хронического спазма поясницы, восстановление подвижности плеч",
+      "contraindications": "Протрузия L4-L5 (в ремиссии), избегать резких ротаций свыше 25°",
+      "anthropometry": [
+        {
+          "id": "an-1",
+          "date": "2026-11-15",
+          "phase": "paired",
+          "weightKg": 84.6,
+          "heightCm": 181,
+          "heightBeforeCm": 181,
+          "heightAfterCm": 181.9,
+          "heightDeltaCm": 0.9,
+          "bmi": 25.8,
+          "bodyFatPct": 19.4,
+          "muscleMassKg": 64.6,
+          "waterPct": 58.9,
+          "proteinPct": 17.6,
+          "visceralFatLevel": 9,
+          "boneMassKg": 3.1,
+          "bmrKcal": 1828,
+          "idealWeightKg": 72.1,
+          "bodyAgeYears": 41,
+          "bodyScore": 81,
+          "bodyType": "Плотное телосложение",
+          "impedanceOhm": 458,
+          "balanceTestSec": 36,
+          "bpSys": 128,
+          "bpDia": 82,
+          "pulseRest": 72,
+          "flexibilityScore": 62,
+          "painIndex": 5,
+          "calibratedScale": true,
+          "notes": "Замер Mi Body Composition Scale 2 + рост до/после первой сессии (+0.9 см)"
+        },
+        {
+          "id": "an-2",
+          "date": "2026-11-18",
+          "phase": "paired",
+          "weightKg": 84.1,
+          "heightCm": 181.2,
+          "heightBeforeCm": 181.2,
+          "heightAfterCm": 182.4,
+          "heightDeltaCm": 1.2,
+          "bmi": 25.6,
+          "bodyFatPct": 19.1,
+          "muscleMassKg": 64.8,
+          "waterPct": 59.2,
+          "proteinPct": 17.8,
+          "visceralFatLevel": 9,
+          "boneMassKg": 3.1,
+          "bmrKcal": 1824,
+          "idealWeightKg": 72.2,
+          "bodyAgeYears": 40,
+          "bodyScore": 84,
+          "bodyType": "Плотное телосложение",
+          "impedanceOhm": 452,
+          "balanceTestSec": 44,
+          "bpSys": 122,
+          "bpDia": 78,
+          "pulseRest": 68,
+          "flexibilityScore": 71,
+          "painIndex": 3,
+          "calibratedScale": true,
+          "notes": "Симметрия рук 96%, декомпрессионный прирост роста +1.2 см"
+        }
+      ],
+      "notes": [
+        {
+          "id": "cn-1",
+          "date": "2026-11-15",
+          "authorName": "Дмитрий Волков",
+          "text": "На первой сессии выявлен зажим правой широчайшей (разница по ЭМГ 18%). Тяга ограничена 64 кг."
+        },
+        {
+          "id": "cn-2",
+          "date": "2026-11-18",
+          "authorName": "Дмитрий Волков",
+          "text": "Отличная динамика: спокойное дыхание на 72 кг, после виса давление снизилось со 128/82 до 122/78."
+        }
+      ],
+      "npsScore": 95,
+      "totalSessions": 5,
+      "lastVisitDate": "2026-11-18",
+      "clientStatus": "active",
+      "postureAssessments": []
+    },
+    {
+      "id": "cl-2",
+      "name": "Ольга Смирнова",
+      "gender": "female",
+      "phone": "+7 (915) 332-11-40",
+      "email": "olga.smirnova@gmail.com",
+      "telegram": "@olga_smirnova",
+      "studioId": "st-tverskaya",
+      "birthYear": 1991,
+      "birthDate": "1991-11-20",
+      "goal": "Раскрытие грудного отдела, осанка после офисной нагрузки",
+      "contraindications": "Нет выявленных ограничений",
+      "anthropometry": [
+        {
+          "id": "an-3",
+          "date": "2026-11-19",
+          "phase": "paired",
+          "weightKg": 61.2,
+          "heightCm": 169,
+          "heightBeforeCm": 169,
+          "heightAfterCm": 169.8,
+          "heightDeltaCm": 0.8,
+          "bmi": 21.4,
+          "bodyFatPct": 22.8,
+          "muscleMassKg": 44.5,
+          "waterPct": 56.4,
+          "proteinPct": 16.9,
+          "visceralFatLevel": 4,
+          "boneMassKg": 2.3,
+          "bmrKcal": 1346,
+          "idealWeightKg": 60,
+          "bodyAgeYears": 31,
+          "bodyScore": 91,
+          "bodyType": "Стандартный",
+          "impedanceOhm": 528,
+          "balanceTestSec": 48,
+          "bpSys": 114,
+          "bpDia": 72,
+          "pulseRest": 66,
+          "flexibilityScore": 78,
+          "painIndex": 2,
+          "calibratedScale": true,
+          "notes": "Синхронизация с Mi Body Composition Scale 2 и B05 (+0.8 см после виса)"
+        }
+      ],
+      "notes": [
+        {
+          "id": "cn-3",
+          "date": "2026-11-19",
+          "authorName": "Дмитрий Волков",
+          "text": "Комфортно переносит тягу 48 кг. Рекомендуется курс 8 сессий с акцентом на грудной отдел."
+        }
+      ],
+      "npsScore": 98,
+      "totalSessions": 3,
+      "lastVisitDate": "2026-11-19",
+      "lastBirthdayGreetingYear": 2026,
+      "clientStatus": "active",
+      "postureAssessments": []
+    },
+    {
+      "id": "cl-3",
+      "name": "Максим Лебедев",
+      "gender": "male",
+      "phone": "+7 (926) 804-55-19",
+      "email": "m.lebedev@yandex.ru",
+      "telegram": "@mlebedev",
+      "studioId": "st-khamovniki",
+      "birthYear": 1982,
+      "birthDate": "1982-09-03",
+      "goal": "Силовая стабилизация после беговых марафонов",
+      "contraindications": "Повышенное АД при перегрузке — контроль B05 обязателен",
+      "anthropometry": [
+        {
+          "id": "an-4",
+          "date": "2026-11-15",
+          "phase": "paired",
+          "weightKg": 79.4,
+          "heightCm": 178,
+          "heightBeforeCm": 178,
+          "heightAfterCm": 179,
+          "heightDeltaCm": 1,
+          "bmi": 25.1,
+          "bodyFatPct": 15.6,
+          "muscleMassKg": 63.8,
+          "waterPct": 61.8,
+          "proteinPct": 18.8,
+          "visceralFatLevel": 7,
+          "boneMassKg": 3.2,
+          "bmrKcal": 1756,
+          "idealWeightKg": 69.7,
+          "bodyAgeYears": 37,
+          "bodyScore": 89,
+          "bodyType": "Спортивный",
+          "impedanceOhm": 418,
+          "balanceTestSec": 52,
+          "bpSys": 132,
+          "bpDia": 84,
+          "pulseRest": 58,
+          "flexibilityScore": 68,
+          "painIndex": 3,
+          "calibratedScale": true,
+          "notes": "Спортивный пульс покоя 58 уд/мин (Wahoo TICKR FIT) · Mi Scale 2"
+        }
+      ],
+      "notes": [
+        {
+          "id": "cn-4",
+          "date": "2026-11-15",
+          "authorName": "Артём Крылов",
+          "text": "Пиковая тяга 82 кг. Контролируем голеностопы, добавлены изометрические удержания."
+        }
+      ],
+      "npsScore": 91,
+      "totalSessions": 9,
+      "lastVisitDate": "2026-11-15",
+      "clientStatus": "active",
+      "postureAssessments": []
+    },
+    {
+      "id": "cl-4",
+      "name": "Виктория Громова",
+      "gender": "female",
+      "phone": "+7 (921) 701-90-33",
+      "email": "gromova.v@bk.ru",
+      "telegram": "@vika_gromova",
+      "studioId": "st-petrograd",
+      "birthYear": 1994,
+      "birthDate": "1994-07-22",
+      "goal": "Снятие напряжения шеи и плечевого пояса",
+      "contraindications": "Гипотония (контроль плавного подъёма после виса)",
+      "anthropometry": [
+        {
+          "id": "an-5",
+          "date": "2026-11-19",
+          "phase": "before",
+          "weightKg": 57.8,
+          "heightCm": 165,
+          "heightBeforeCm": 165,
+          "bmi": 21.2,
+          "bodyFatPct": 21,
+          "muscleMassKg": 43.1,
+          "waterPct": 57.6,
+          "proteinPct": 17.5,
+          "visceralFatLevel": 3,
+          "boneMassKg": 2.2,
+          "bmrKcal": 1296,
+          "idealWeightKg": 57.2,
+          "bodyAgeYears": 29,
+          "bodyScore": 94,
+          "bodyType": "Стандартный",
+          "impedanceOhm": 514,
+          "balanceTestSec": 50,
+          "bpSys": 105,
+          "bpDia": 68,
+          "pulseRest": 70,
+          "flexibilityScore": 81,
+          "painIndex": 2,
+          "calibratedScale": true,
+          "notes": "Входной замер перед тренировкой (ожидает фиксации роста после)"
+        }
+      ],
+      "notes": [],
+      "npsScore": 94,
+      "totalSessions": 4,
+      "lastVisitDate": "2026-11-19",
+      "clientStatus": "active",
+      "postureAssessments": []
+    }
+  ],
+  "bookings": [
+    {
+      "id": "bk-1",
+      "studioId": "st-tverskaya",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "serviceId": "srv-base",
+      "serviceName": "Индивидуальная сессия ПравИло",
+      "priceRub": 4200,
+      "date": "2026-11-20",
+      "time": "11:00",
+      "durationMin": 60,
+      "status": "confirmed",
+      "paymentStatus": "unpaid",
+      "finalAmountRub": 4200,
+      "createdAt": "2026-11-19"
+    },
+    {
+      "id": "bk-2",
+      "studioId": "st-tverskaya",
+      "clientId": "cl-2",
+      "clientName": "Ольга Смирнова",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "serviceId": "srv-deep",
+      "serviceName": "Глубокая декомпрессия + миография",
+      "priceRub": 5600,
+      "date": "2026-11-20",
+      "time": "14:00",
+      "durationMin": 90,
+      "status": "in_progress",
+      "paymentStatus": "unpaid",
+      "finalAmountRub": 5600,
+      "createdAt": "2026-11-19"
+    },
+    {
+      "id": "bk-3",
+      "studioId": "st-khamovniki",
+      "clientId": "cl-3",
+      "clientName": "Максим Лебедев",
+      "trainerId": "u-trainer-2",
+      "trainerName": "Артём Крылов",
+      "serviceId": "srv-base",
+      "serviceName": "Индивидуальная сессия ПравИло",
+      "priceRub": 4200,
+      "date": "2026-11-20",
+      "time": "16:30",
+      "durationMin": 60,
+      "status": "pending",
+      "paymentStatus": "unpaid",
+      "finalAmountRub": 4200,
+      "createdAt": "2026-11-20"
+    },
+    {
+      "id": "bk-4",
+      "studioId": "st-petrograd",
+      "clientId": "cl-4",
+      "clientName": "Виктория Громова",
+      "trainerId": "u-trainer-3",
+      "trainerName": "Мария Белова",
+      "serviceId": "srv-recovery",
+      "serviceName": "Восстановительное вытяжение (спина/шея)",
+      "priceRub": 3200,
+      "date": "2026-11-21",
+      "time": "12:00",
+      "durationMin": 45,
+      "status": "confirmed",
+      "paymentStatus": "paid_card",
+      "finalAmountRub": 3200,
+      "createdAt": "2026-11-20"
+    },
+    {
+      "id": "bk-past-1",
+      "studioId": "st-tverskaya",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "serviceId": "srv-diag",
+      "serviceName": "Первичная диагностика + ПравИло",
+      "priceRub": 3500,
+      "date": "2026-11-15",
+      "time": "18:00",
+      "durationMin": 60,
+      "status": "completed",
+      "paymentStatus": "paid_subscription",
+      "finalAmountRub": 3500,
+      "createdAt": "2026-11-15"
+    },
+    {
+      "id": "bk-past-2",
+      "studioId": "st-tverskaya",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "serviceId": "srv-base",
+      "serviceName": "Индивидуальная сессия ПравИло",
+      "priceRub": 4200,
+      "date": "2026-11-18",
+      "time": "19:00",
+      "durationMin": 60,
+      "status": "completed",
+      "paymentStatus": "paid_subscription",
+      "finalAmountRub": 4200,
+      "createdAt": "2026-11-18"
+    }
+  ],
+  "equipment": [
+    {
+      "id": "eq-esp32",
+      "type": "esp32_limbs",
+      "name": "Тензодатчики конечностей ESP32",
+      "model": "ESP32-S3 + 4×HX711 Load Cell",
+      "protocol": "BLE GATT / WebSocket 20Hz",
+      "connected": false,
+      "connectionMode": "disconnected",
+      "batteryPct": 0,
+      "signalQualityPct": 0,
+      "lastReadingText": "Ожидает подключения реального датчика",
+      "lastSyncAt": "",
+      "streaming": false,
+      "hardwareConfig": {
+        "transport": "web_bluetooth",
+        "serialBaudRate": 115200,
+        "bridgeUrl": "ws://192.168.1.50:81",
+        "esp32ZeroOffsets": {
+          "lh": 0,
+          "rh": 0,
+          "lf": 0,
+          "rf": 0
+        },
+        "esp32ScaleFactors": {
+          "lh": 1,
+          "rh": 1,
+          "lf": 1,
+          "rf": 1
+        }
+      }
+    },
+    {
+      "id": "eq-myoblue",
+      "type": "myoblue_emg",
+      "name": "Мио-датчики MYOblue",
+      "model": "Wireless EMG MYOblue v1.2 (2-ch)",
+      "protocol": "BLE 5.0 GATT Notify",
+      "connected": false,
+      "connectionMode": "disconnected",
+      "batteryPct": 0,
+      "signalQualityPct": 0,
+      "lastReadingText": "Ожидает подключения реального датчика",
+      "lastSyncAt": "",
+      "streaming": false,
+      "hardwareConfig": {
+        "transport": "web_bluetooth",
+        "emgGain": 1,
+        "emgBaselineMv": 0
+      }
+    },
+    {
+      "id": "eq-wahoo",
+      "type": "wahoo_tickr",
+      "name": "Пульсометр Wahoo TICKR FIT",
+      "model": "Wahoo TICKR FIT Optical Armband",
+      "protocol": "BLE Heart Rate (0x180D)",
+      "connected": false,
+      "connectionMode": "disconnected",
+      "batteryPct": 0,
+      "signalQualityPct": 0,
+      "lastReadingText": "Ожидает подключения реального датчика",
+      "lastSyncAt": "",
+      "streaming": false,
+      "hardwareConfig": {
+        "transport": "web_bluetooth"
+      }
+    },
+    {
+      "id": "eq-xiaomi",
+      "type": "xiaomi_scale",
+      "name": "Весы Mi Body Composition Scale 2",
+      "model": "Xiaomi Mi Body Composition Scale 2 (XMTZC05HM)",
+      "protocol": "BLE 5.0 GATT (0x181B) + BIA",
+      "connected": false,
+      "connectionMode": "disconnected",
+      "batteryPct": 0,
+      "signalQualityPct": 0,
+      "lastReadingText": "Ожидает подключения реального датчика",
+      "lastSyncAt": "",
+      "streaming": false,
+      "calibration": {
+        "tareOffsetKg": 0,
+        "gainFactor": 1,
+        "impedanceOffsetOhm": 0,
+        "referenceWeightKg": 50,
+        "calibrated": true,
+        "lastCalibratedAt": "2026-11-20 10:29"
+      },
+      "hardwareConfig": {
+        "transport": "web_bluetooth",
+        "autoSyncToCard": true
+      }
+    },
+    {
+      "id": "eq-b05",
+      "type": "bp_b05",
+      "name": "Тонометр Bluetooth B05",
+      "model": "BPM-B05 Auto BLE Cuff",
+      "protocol": "BLE Blood Pressure (0x1810)",
+      "connected": false,
+      "connectionMode": "disconnected",
+      "batteryPct": 0,
+      "signalQualityPct": 0,
+      "lastReadingText": "Ожидает подключения реального датчика",
+      "lastSyncAt": "",
+      "streaming": false,
+      "hardwareConfig": {
+        "transport": "web_bluetooth",
+        "autoSyncToCard": true
+      }
+    }
+  ],
+  "sessions": [
+    {
+      "id": "ses-1",
+      "bookingId": "bk-past-1",
+      "studioId": "st-tverskaya",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "programId": "prog-1",
+      "programTitle": "Первая тренировка (Адаптация и диагностика)",
+      "startedAt": "2026-11-15T18:00:00Z",
+      "endedAt": "2026-11-15T18:52:00Z",
+      "durationSec": 3120,
+      "completedExercises": [
+        {
+          "exerciseId": "ex-star",
+          "title": "Горизонтальная «Звёздочка»",
+          "durationSec": 180,
+          "maxWinchKg": 64.2,
+          "avgEmgMv": 0.58
+        },
+        {
+          "exerciseId": "ex-shoulder",
+          "title": "Раскрытие грудного отдела",
+          "durationSec": 150,
+          "maxWinchKg": 54,
+          "avgEmgMv": 0.44
+        }
+      ],
+      "peakWinchKg": 64.2,
+      "avgSymmetryPct": 91,
+      "maxLimbLoads": {
+        "lh": 15.2,
+        "rh": 16.9,
+        "lf": 15.8,
+        "rf": 16.3
+      },
+      "avgHrBpm": 94,
+      "bpBefore": "128/82",
+      "bpAfter": "124/80",
+      "heightBeforeCm": 181,
+      "heightAfterCm": 181.9,
+      "notes": "Адаптационная нагрузка пройдена ровно, отмечен спазм справа в трапеции.",
+      "paymentMethod": "paid_subscription",
+      "amountPaidRub": 3500
+    },
+    {
+      "id": "ses-2",
+      "bookingId": "bk-past-2",
+      "studioId": "st-tverskaya",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "programId": "prog-2",
+      "programTitle": "Вторая тренировка (Глубокая симметрия)",
+      "startedAt": "2026-11-18T19:00:00Z",
+      "endedAt": "2026-11-18T19:56:00Z",
+      "durationSec": 3360,
+      "completedExercises": [
+        {
+          "exerciseId": "ex-star",
+          "title": "Горизонтальная «Звёздочка»",
+          "durationSec": 180,
+          "maxWinchKg": 72.4,
+          "avgEmgMv": 0.46
+        },
+        {
+          "exerciseId": "ex-shoulder",
+          "title": "Раскрытие грудного отдела",
+          "durationSec": 150,
+          "maxWinchKg": 60.5,
+          "avgEmgMv": 0.39
+        },
+        {
+          "exerciseId": "ex-twist",
+          "title": "Диагональное скручивание (Винт)",
+          "durationSec": 120,
+          "maxWinchKg": 56.8,
+          "avgEmgMv": 0.41
+        }
+      ],
+      "peakWinchKg": 72.4,
+      "avgSymmetryPct": 96,
+      "maxLimbLoads": {
+        "lh": 18,
+        "rh": 18.3,
+        "lf": 17.9,
+        "rf": 18.2
+      },
+      "avgHrBpm": 88,
+      "bpBefore": "124/80",
+      "bpAfter": "122/78",
+      "heightBeforeCm": 181.2,
+      "heightAfterCm": 182.4,
+      "notes": "Значительный прогресс в расслаблении поясницы; асимметрия снизилась до 4%.",
+      "paymentMethod": "paid_subscription",
+      "amountPaidRub": 4200
+    }
+  ],
+  "templates": [
+    {
+      "id": "tpl-rem-24",
+      "name": "Напоминание о записи (за 24 часа)",
+      "channel": "telegram",
+      "trigger": "reminder_24h",
+      "subject": "Напоминание о тренировке ПравИло",
+      "body": "Здравствуйте, {{client_name}}! Напоминаем, что завтра {{session_date}} в {{session_time}} вас ждёт тренер {{trainer_name}} в студии {{studio_address}}. Отслеживайте прогресс и управляйте записью в личном кабинете: {{cabinet_link}}"
+    },
+    {
+      "id": "tpl-pay-due",
+      "name": "Напоминание об оплате / продлении абонемента",
+      "channel": "email",
+      "trigger": "payment_due",
+      "subject": "Счёт на оплату сессии · ЭТАЛОН ПРАВИЛО",
+      "body": "Добрый день, {{client_name}}!\nПо вашей тренировке {{session_date}} ({{service_name}}) к оплате {{amount}} ₽ (остаток по абонементу: {{remaining_sessions}}).\nПерейти к оплате и чекам в личном кабинете: {{cabinet_link}}"
+    },
+    {
+      "id": "tpl-session-done",
+      "name": "Отчёт после завершения тренировки",
+      "channel": "whatsapp",
+      "trigger": "session_completed",
+      "subject": "Итоги тренировки ПравИло",
+      "body": "{{client_name}}, отличная сессия! Ваши показатели телеметрии и график ЭМГ уже сохранены в личном кабинете: {{cabinet_link}}. Осталось занятий по абонементу: {{remaining_sessions}}."
+    },
+    {
+      "id": "tpl-push-booking",
+      "name": "Push: Скоро тренировка (за 2 часа)",
+      "channel": "push",
+      "trigger": "reminder_2h",
+      "subject": "Тренировка через 2 часа",
+      "body": "{{client_name}}, сессия в {{session_time}} с {{trainer_name}} ({{studio_address}}). Возьмите удобную спортивную форму."
+    },
+    {
+      "id": "tpl-birthday-push",
+      "name": "Поздравление с Днём рождения (авто-Push)",
+      "channel": "push",
+      "trigger": "birthday",
+      "subject": "С Днём рождения от ЭТАЛОН ПРАВИЛО!",
+      "body": "Дорогой клиент {{client_name}}, поздравляем с Днём рождения! Желаем лёгкости в теле, крепкой осанки и новых вершин. В честь праздника дарим −20% на следующую сессию в студии ({{studio_address}}). Ваш кабинет: {{cabinet_link}}"
+    }
+  ],
+  "birthdayAutomationEnabled": true,
+  "notificationLogs": [
+    {
+      "id": "nlog-mwou7ucw-8n21",
+      "templateId": "tpl-birthday-push",
+      "channel": "push",
+      "recipientName": "Ольга Смирнова",
+      "recipientContact": "@olga_smirnova",
+      "clientId": "cl-2",
+      "subject": "С Днём рождения от ЭТАЛОН ПРАВИЛО!",
+      "messagePreview": "Дорогой клиент Ольга Смирнова, поздравляем с Днём рождения! Желаем лёгкости в теле, крепкой осанки и новых вершин. В честь праздника дарим −20% на следующую сессию в студии (ул. Тверская, 18Б, 3 этаж). Ваш кабинет: /?cabinet=client&clientId=cl-2",
+      "cabinetLink": "/?cabinet=client&clientId=cl-2",
+      "status": "delivered",
+      "sentAt": "2026-11-20 10:29"
+    },
+    {
+      "id": "nlog-1",
+      "templateId": "tpl-rem-24",
+      "channel": "telegram",
+      "recipientName": "Игорь Назаров",
+      "recipientContact": "@igor_nazarov",
+      "clientId": "cl-1",
+      "subject": "Напоминание о тренировке ПравИло",
+      "messagePreview": "Здравствуйте, Игорь Назаров! Напоминаем, что сегодня в 11:00 вас ждёт тренер Дмитрий Волков в студии ул. Тверская, 18Б, 3 этаж.",
+      "cabinetLink": "/?cabinet=client&clientId=cl-1",
+      "status": "read",
+      "sentAt": "2026-11-19 11:00"
+    },
+    {
+      "id": "nlog-2",
+      "templateId": "tpl-session-done",
+      "channel": "email",
+      "recipientName": "Игорь Назаров",
+      "recipientContact": "nazarov.igor@mail.ru",
+      "clientId": "cl-1",
+      "subject": "Итоги тренировки ПравИло",
+      "messagePreview": "Игорь Назаров, отличная сессия! Ваши показатели телеметрии и график ЭМГ сохранены в личном кабинете. Осталось занятий: 5.",
+      "cabinetLink": "/?cabinet=client&clientId=cl-1",
+      "status": "delivered",
+      "sentAt": "2026-11-18 20:05"
+    }
+  ],
+  "hardwareRealModeInitialized": true,
+  "messagingSettings": {
+    "email": {
+      "enabled": false,
+      "host": "smtp.yandex.ru",
+      "port": 465,
+      "secure": true,
+      "user": "studio@etalon-pravilo.ru",
+      "password": "",
+      "fromName": "Студия ЭТАЛОН ПРАВИЛО",
+      "fromEmail": "studio@etalon-pravilo.ru"
+    },
+    "telegram": {
+      "enabled": false,
+      "botUsername": "@etalon_pravilo_bot",
+      "botToken": "",
+      "webhookSecret": "etalon-tg-hook-2026",
+      "autoConfirmBooking": true
+    },
+    "whatsapp": {
+      "enabled": false,
+      "provider": "cloud_api",
+      "phoneNumberId": "",
+      "accessToken": "",
+      "webhookUrl": "",
+      "businessPhone": "+7 (495) 120-88-10"
+    }
+  },
+  "messengerMessages": [
+    {
+      "id": "mmsg-1",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "channel": "telegram",
+      "direction": "outbound",
+      "senderName": "Елена Морозова (Админ)",
+      "contactHandle": "@igor_nazarov",
+      "text": "Здравствуйте, Игорь! Напоминаем про вашу сессию ПравИло с тренером Дмитрием Волковым. Посмотреть прогресс и перенести время можно по ссылке: /?cabinet=client&clientId=cl-1",
+      "sentAt": "2026-11-19 11:00",
+      "readByAdmin": true,
+      "deliveryStatus": "delivered"
+    },
+    {
+      "id": "mmsg-2",
+      "clientId": "cl-1",
+      "clientName": "Игорь Назаров",
+      "channel": "telegram",
+      "direction": "inbound",
+      "senderName": "Игорь Назаров",
+      "contactHandle": "@igor_nazarov",
+      "text": "Спасибо! Буду за 10 минут до начала. Подскажите, можно ли завтра замерить рост до и после на лебёдке?",
+      "sentAt": "2026-11-19 11:14",
+      "readByAdmin": false,
+      "deliveryStatus": "delivered"
+    },
+    {
+      "id": "mmsg-3",
+      "clientId": "cl-2",
+      "clientName": "Ольга Смирнова",
+      "channel": "whatsapp",
+      "direction": "inbound",
+      "senderName": "Ольга Смирнова",
+      "contactHandle": "+7 (916) 334-18-22",
+      "text": "Добрый день! Хочу записаться по подарочному сертификату GIFT-9904 на пятницу вечер. Пришлите, пожалуйста, онлайн-ссылку для выбора времени.",
+      "sentAt": "2026-11-20 09:40",
+      "readByAdmin": false,
+      "deliveryStatus": "delivered"
+    },
+    {
+      "id": "mmsg-4",
+      "clientId": "cl-3",
+      "clientName": "Максим Лебедев",
+      "channel": "web_chat",
+      "direction": "inbound",
+      "senderName": "Максим Лебедев",
+      "contactHandle": "Кабинет PWA",
+      "text": "Здравствуйте! У меня осталось 1 занятие в абонементе, как оформить продление со скидкой?",
+      "sentAt": "2026-11-20 10:15",
+      "readByAdmin": true,
+      "deliveryStatus": "delivered"
+    },
+    {
+      "id": "mmsg-5",
+      "clientId": "cl-3",
+      "clientName": "Максим Лебедев",
+      "channel": "web_chat",
+      "direction": "outbound",
+      "senderName": "Елена Морозова (Админ)",
+      "contactHandle": "Кабинет PWA",
+      "text": "Максим, добрый день! Применили для вас промокод SPINE15 (−15%). Вы можете записаться на следующее занятие прямо по онлайн-ссылке: /?book=1&studio=st-khamovniki&clientId=cl-3&promo=SPINE15",
+      "sentAt": "2026-11-20 10:22",
+      "readByAdmin": true,
+      "deliveryStatus": "delivered"
+    }
+  ],
+  "trainerPosts": [
+    {
+      "id": "tpost-1",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "studioId": "st-tverskaya",
+      "platform": "telegram",
+      "category": "Биомеханика",
+      "title": "Почему декомпрессия на ПравИло убирает зажимы лучше классического массажа",
+      "content": "При горизонтальном вытяжении нагрузка распределяется одновременно по 4 точкам через мягкие манжеты. Связочно-мышечный корсет включается симметрично, межпозвонковые промежутки мягко раскрываются, а спазмированные глубокие мышцы спины отпускают напряжение уже на 3-й минуте под контролем дыхания.",
+      "hashtags": [
+        "#ЭталонПравило",
+        "#Биомеханика",
+        "#Декомпрессия",
+        "#ЗдороваяСпина"
+      ],
+      "includeBookingLink": true,
+      "status": "published",
+      "publishedAt": "2026-11-21 16:30"
+    },
+    {
+      "id": "tpost-2",
+      "trainerId": "u-trainer-1",
+      "trainerName": "Дмитрий Волков",
+      "studioId": "st-tverskaya",
+      "platform": "vk",
+      "category": "Кейс без ПДн",
+      "title": "Динамика роста и симметрии за 4 недели регулярных сессий",
+      "content": "Обезличенный разбор прогресса: при стартовом вытяжении 60 кг асимметрия левой и правой стороны составляла 11%. После 6 индивидуальных тренировок по авторской программе мы вышли на 96% симметрии при целевой тяге 110 кг, а замер роста после сессии стабильно фиксирует +1.2 см декомпрессионного раскрытия.",
+      "hashtags": [
+        "#ПравИло",
+        "#КейсТренера",
+        "#Осанка",
+        "#МоскваТверская"
+      ],
+      "includeBookingLink": true,
+      "status": "draft",
+      "publishedAt": "2026-11-22 11:00"
+    }
+  ],
+  "systemSettings": {
+    "requireEmailVerificationOnLogin": false,
+    "publicDomainUrl": "",
+    "tunnelMode": "cloudflare",
+    "appVersion": "1.2.0"
+  },
+  "reviews": [
+    {
+      "id": "rev-st-1",
+      "targetType": "studio",
+      "targetId": "st-tverskaya",
+      "clientId": "cl-1",
+      "authorName": "Игорь Назаров",
+      "rating": 5,
+      "comment": "Отличное расположение у метро, чистые залы, точные датчики нагрузки и очень приятная атмосфера.",
+      "createdAt": "2026-11-17"
+    },
+    {
+      "id": "rev-st-2",
+      "targetType": "studio",
+      "targetId": "st-khamovniki",
+      "clientId": "cl-3",
+      "authorName": "Максим Лебедев",
+      "rating": 5,
+      "comment": "Удобная парковка и тихий зал, после силовой недели спина буквально оживает.",
+      "createdAt": "2026-11-20"
+    },
+    {
+      "id": "rev-st-3",
+      "targetType": "studio",
+      "targetId": "st-petrograd",
+      "clientId": "cl-2",
+      "authorName": "Виктория Смирнова",
+      "rating": 5,
+      "comment": "Уютная студия в историческом центре, всё продумано до мелочей.",
+      "createdAt": "2026-11-21"
+    },
+    {
+      "id": "rev-tr-1",
+      "targetType": "trainer",
+      "targetId": "u-trainer-1",
+      "clientId": "cl-1",
+      "authorName": "Игорь Назаров",
+      "rating": 5,
+      "comment": "Дмитрий очень бережно подбирает тягу по телеметрии и следит за дыханием — ушёл зажим в пояснице.",
+      "createdAt": "2026-11-17"
+    },
+    {
+      "id": "rev-tr-2",
+      "targetType": "trainer",
+      "targetId": "u-trainer-2",
+      "clientId": "cl-3",
+      "authorName": "Максим Лебедев",
+      "rating": 5,
+      "comment": "Артём дал отличную программу на баланс-бревно и вытяжение, результат ощущается сразу.",
+      "createdAt": "2026-11-20"
+    },
+    {
+      "id": "rev-tr-3",
+      "targetType": "trainer",
+      "targetId": "u-trainer-3",
+      "clientId": "cl-2",
+      "authorName": "Виктория Смирнова",
+      "rating": 5,
+      "comment": "Мария очень внимательный специалист, подробно объясняет технику каждого упражнения.",
+      "createdAt": "2026-11-21"
+    }
+  ],
+  "brandAbout": {
+    "brandName": "ЭТАЛОН ПРАВИЛО",
+    "tagline": "Биомеханическая декомпрессия, восстановление осанки и телеметрический контроль здоровья",
+    "aboutNetwork": "Сеть студий «ЭТАЛОН ПРАВИЛО» объединяет бережные телесные практики на древнеславянском тренажёре ПравИло и современные технологии объективной диагностики. Мы работаем с осанкой, хроническим напряжением спины и шеи, восстановлением после нагрузок и повышением жизненного тонуса в Москве и Санкт-Петербурге.",
+    "methodologyTitle": "О методике ПравИло",
+    "methodologyDescription": "Методика основана на мягком симметричном осевом вытяжении тела в четырёх векторах (руки и ноги) с точным подбором стоек, углов и дозированной тяги. В отличие от грубых манипуляций, плавное горизонтальное вытяжение в сочетании с диафрагмальным дыханием снимает компрессию с межпозвонковых дисков, раскрывает грудной отдел, выравнивает фасциальные цепи и активирует глубокие мышцы-стабилизаторы.",
+    "whyUsTitle": "Почему выбирают сеть «ЭТАЛОН ПРАВИЛО»",
+    "whyUsPoints": [
+      "Точная телеметрия вместо тяги «на глаз»: тензодатчики ESP32 фиксируют нагрузку в килограммах по каждой конечности в реальном времени.",
+      "Фотопротокол осанки «ДО / ПОСЛЕ» с лазерным уровнем и замером углов перекоса плеч, таза и позвоночника.",
+      "Контроль мышечного отклика (миография MYOblue EMG), пульса и давления перед выходом на раму и после сессии.",
+      "Состав тела и динамика на весах Mi Body Composition Scale 2 с подробной расшифровкой каждого показателя в кабинете клиента.",
+      "Индивидуальная матрица стоек (1–7) и углов (0–6) под антропометрию и задачи каждого гостя — от бережного релакса до спортивного восстановления.",
+      "Сертифицированные специалисты со стажем от 6 до 9+ лет и открытыми публичными отзывами клиентов."
+    ],
+    "approaches": [
+      {
+        "id": "app-diag",
+        "title": "1. Диагностика до начала практики",
+        "description": "Измеряем рост, давление, состав тела (Mi Scale 2) и проводим визуальную оценку симметрии по лазерному уровню, чтобы зафиксировать исходную точку."
+      },
+      {
+        "id": "app-traction",
+        "title": "2. Плавное и безопасное вытяжение",
+        "description": "Мягкие манжеты, плавный набор нагрузки без рывков и точный подбор углов для левой и правой сторон под постоянным сопровождением тренера."
+      },
+      {
+        "id": "app-telemetry",
+        "title": "3. Контроль телеметрией в реальном времени",
+        "description": "Следим за балансом тяги левой/правой сторон, частотой пульса и мышечной активацией по датчикам — вы видите объективные цифры прогресса."
+      },
+      {
+        "id": "app-result",
+        "title": "4. Закрепление и домашняя динамика",
+        "description": "После сессии делаем повторный замер роста и фотопротокол ПОСЛЕ, а все результаты, графики и рекомендации сразу доступны в вашем личном кабинете."
+      }
+    ],
+    "methodologyBlocks": [
+      {
+        "id": "mb-sport",
+        "slug": "sport",
+        "badge": "Спорт",
+        "title": "Спорт ZA ПравИло",
+        "subtitle": "Тренажёр ПравИло в спорте — выведи показатели и восстановление на новый уровень",
+        "quoteOrMotto": "Возьми за правило заниматься на ПравИло!",
+        "promoBadge": "Запись на первое занятие со скидкой 50%",
+        "heroImageUrl": "/src/assets/images/exercise_twist_hang_1795103073130.jpg",
+        "accentTone": "cyan",
+        "recommendedServiceCategory": "sport",
+        "recommendedServiceHint": "Глубокая декомпрессия / Силовое удержание",
+        "summary": "Осевое вытяжение и изометрическое напряжение глубоких мышц снимают спортивные перегрузки, восстанавливают симметрию тяги и позволяют преодолеть тренировочное плато без ударной нагрузки на суставы.",
+        "reasonsTitle": "10 причин для занятий на тренажёре ПравИло",
+        "reasons": [
+          "Устранение функциональных блоков, снятие зажимов и спазмов в мышцах.",
+          "Активное жиросжигание, ускорение лимфотока и метаболизма.",
+          "Мягкое тракционное вытяжение с вовлечением глубоких мышц-стабилизаторов.",
+          "Проработка спортивных травм и ускоренная реабилитация после нагрузок.",
+          "Улучшение состояния нервной, эндокринной, сердечно-сосудистой, дыхательной и пищеварительной систем.",
+          "Рост силовой и общей выносливости.",
+          "Повышение координации и баланса левой/правой сторон по датчикам тяги.",
+          "Вывод спортивных показателей на кардинально новый уровень, подготовка к соревнованиям.",
+          "Мужские, женские и специализированные спортивные программы с подбором углов 0–6.",
+          "Быстрое достижение измеримых результатов с телеметрическим контролем."
+        ],
+        "featureCards": [
+          {
+            "id": "sp-pain",
+            "heading": "Жизнь без боли",
+            "text": "Тренажёр помогает быстро избавиться от боли в спине, шее, плечах, конечностях и тазовой области."
+          },
+          {
+            "id": "sp-cal",
+            "heading": "Калории за борт",
+            "text": "Тренировки запускают активное жиросжигание, ускоряют лимфоток и обмен веществ в организме."
+          },
+          {
+            "id": "sp-limit",
+            "heading": "Выйди за грань",
+            "text": "Снятие патологического напряжения мышц и высвобождение нервных окончаний стабилизируют нервную систему, снижают тревожность и возвращают бодрость."
+          },
+          {
+            "id": "sp-ctrl",
+            "heading": "Полный контроль",
+            "text": "Регулярные тренировки помогают выстроить здоровый режим, спокойствие и устойчивость к стрессу без вредных привычек."
+          },
+          {
+            "id": "sp-self",
+            "heading": "Загляни в себя",
+            "text": "Преодоление сложных позиций даёт чувство удовлетворения, эмоциональный подъём и расширяет горизонт физических возможностей."
+          },
+          {
+            "id": "sp-top",
+            "heading": "Запредельные возможности",
+            "text": "Помогает преодолеть силовой барьер, повысить качество тренировочного процесса и симметрию тела."
+          }
+        ],
+        "contraindicationsNote": "Перед стартом тренер проводит замер давления, пульса и подбирает стойки (1–7) и углы (0–6) под ваш вид спорта.",
+        "active": true
+      },
+      {
+        "id": "mb-office",
+        "slug": "office",
+        "badge": "Офис и Антистресс",
+        "title": "Офис выбирает ПравИло",
+        "subtitle": "Пять причин расслабиться, снять офисные зажимы и восстановить спину после рабочего дня",
+        "quoteOrMotto": "Твой выбор — здоровье и ясная голова после работы за компьютером!",
+        "promoBadge": "Запись на первое занятие",
+        "heroImageUrl": "/src/assets/images/exercise_shoulder_open_1795103072729.jpg",
+        "accentTone": "violet",
+        "recommendedServiceCategory": "relax",
+        "recommendedServiceHint": "Релакс-вытяжение и дыхание / Снятие зажимов шеи и спины",
+        "summary": "Ступенчатое изотоническое растяжение на тренажёре ПравИло совместно с массажем, ЛФК и йогой благотворно воздействует на суставы и мышцы, возвращает гибкость позвоночника и применяется для мягкой механотерапии и кинезиотерапии.",
+        "reasonsTitle": "Подготовь себя к работе: 6 эффектов для офисных сотрудников",
+        "reasons": [
+          "Укрепление мышечного корсета, поддерживающего позвоночник, и коррекция сутулости от сидячей работы.",
+          "Нормализация количества внутрисуставной синовиальной жидкости.",
+          "Улучшение питания хрящевой ткани и повышение эластичности межпозвоночных дисков.",
+          "Стимуляция собственных защитных сил организма и внутренних резервов.",
+          "Активация и балансировка работы нервной системы.",
+          "Нормализация психоэмоционального фона, борьба с бессонницей и полное расслабление."
+        ],
+        "featureCards": [
+          {
+            "id": "of-stretch",
+            "heading": "Потянись",
+            "text": "Система мягкой растяжки позвоночника, шеи, мышц и суставов для высвобождения психосоматического напряжения."
+          },
+          {
+            "id": "of-pain",
+            "heading": "Забудь про боли",
+            "text": "За счёт ступенчатого изотонического растяжения мышцы мягко удлиняются и расслабляются — проходят спазмы шеи, поясницы и плеч."
+          },
+          {
+            "id": "of-stress",
+            "heading": "Скажи стрессу нет",
+            "text": "Регулярные занятия помогают справиться с бессонницей, хронической усталостью и дистрессом за счёт самонастройки нервной и эндокринной систем."
+          },
+          {
+            "id": "of-slim",
+            "heading": "Растянись и худей",
+            "text": "Мягкая метаболическая нагрузка ускоряет лимфоток и помогает поддерживать форму даже при малоподвижном графике."
+          },
+          {
+            "id": "of-ready",
+            "heading": "Всегда готов",
+            "text": "Не требуется сложное снаряжение — достаточно принести только удобную сменную одежду и чистые носочки."
+          },
+          {
+            "id": "of-health",
+            "heading": "Твой выбор — здоровье",
+            "text": "Профилактика остеохондроза, межпозвоночной грыжи, сколиоза, кифоза и лордоза с высвобождением сосудов и нервных окончаний."
+          }
+        ],
+        "contraindicationsNote": "Идеально после рабочего дня: мягкий вход в тягу под контролем ЧСС (Wahoo TICKR FIT) и тонометра до/после практики.",
+        "active": true
+      },
+      {
+        "id": "mb-age",
+        "slug": "age",
+        "badge": "Возраст 50+",
+        "title": "Возраст ZA ПравИло",
+        "subtitle": "Активное долголетие, подвижность суставов и лёгкость движений без ударной нагрузки",
+        "quoteOrMotto": "Движение без боли и скованности в любом возрасте!",
+        "promoBadge": "Бережный старт под контролем давления",
+        "heroImageUrl": "/src/assets/images/studio_hero_pravilo_1795103073467.jpg",
+        "accentTone": "emerald",
+        "recommendedServiceCategory": "wellness",
+        "recommendedServiceHint": "Оздоровительное вытяжение с контролем АД и ЧСС",
+        "summary": "Деликатное дозированное вытяжение в комфортном положении без прыжков, осевого сжатия и резких рывков. Мягко разгружает тазобедренные и коленные суставы, улучшает питание межпозвоночных дисков и возвращает уверенность в каждом шаге.",
+        "reasonsTitle": "Почему методика безопасна и полезна в зрелом возрасте",
+        "reasons": [
+          "Отсутствие ударной и компрессионной нагрузки на позвоночник и суставы.",
+          "Улучшение питания хрящей и стимуляция выработки синовиальной жидкости.",
+          "Снятие возрастной скованности в плечевом поясе, пояснице и тазобедренных суставах.",
+          "Мягкая профилактика остеохондроза и возрастных изменений осанки.",
+          "Улучшение кровообращения, лимфотока, координации и равновесия.",
+          "Обязательный контроль артериального давления и пульса перед началом и после сессии."
+        ],
+        "featureCards": [
+          {
+            "id": "age-joints",
+            "heading": "Свобода суставов",
+            "text": "Плавная разгрузка плеч, таза и коленей возвращает амплитуду движений в повседневных делах без хруста и скованности."
+          },
+          {
+            "id": "age-pressure",
+            "heading": "Телеметрия безопасности",
+            "text": "Каждая сессия начинается и заканчивается измерением АД и пульса, а тяга дозируется с точностью до 0.5 кг."
+          },
+          {
+            "id": "age-balance",
+            "heading": "Уверенный баланс",
+            "text": "Пробуждение глубоких мышц-стабилизаторов улучшает походку, устойчивость и профилактирует бытовые перегрузки."
+          },
+          {
+            "id": "age-sleep",
+            "heading": "Глубокий сон и лёгкость",
+            "text": "Снятие глубинных мышечных зажимов в шее и спине нормализует сон и утреннее самочувствие."
+          }
+        ],
+        "contraindicationsNote": "Занятия проводятся индивидуально, с постепенной адаптацией нагрузки и мягкими анатомическими манжетами.",
+        "active": true
+      },
+      {
+        "id": "mb-kids",
+        "slug": "kids",
+        "badge": "Дети и подростки",
+        "title": "Дети ZA ПравИло",
+        "subtitle": "Формирование здоровой осанки, координации и снятие школьной нагрузки в период активного роста",
+        "quoteOrMotto": "Ровная спина и крепкий мышечный корсет с детства!",
+        "promoBadge": "Фото-диагностика осанки по лазерному уровню",
+        "heroImageUrl": "/src/assets/images/exercise_star_stretch_1795103073739.jpg",
+        "accentTone": "amber",
+        "recommendedServiceCategory": "fitness",
+        "recommendedServiceHint": "Детская коррекция осанки и баланс-бревно",
+        "summary": "В период школьной нагрузки и быстрого скачка роста позвоночник особенно уязвим к сутулости и перекосам. Бережные игровые практики на ПравИло в сочетании с упражнениями на баланс-бревне помогают мягко выровнять плечи, таз и укрепить мышцы спины.",
+        "reasonsTitle": "Польза занятий для детей и подростков",
+        "reasons": [
+          "Мягкая коррекция сутулости, профилактика сколиоза, кифоза и гиперлордоза.",
+          "Снятие статического напряжения от долгого сидения за партой и гаджетами.",
+          "Симметричное укрепление глубокого мышечного корсета во время роста.",
+          "Развитие ловкости, проприоцепции и координации движений (включая баланс-бревно).",
+          "Безопасная нагрузка с учётом веса ребёнка — мягкие детские манжеты и деликатный угол.",
+          "Наглядный фотопротокол осанки ДО и ПОСЛЕ с лазерным уровнем для родителей."
+        ],
+        "featureCards": [
+          {
+            "id": "kids-posture",
+            "heading": "Осанка под контролем",
+            "text": "Оцениваем симметрию плеч, лопаток и таза на фото с лазерным уровнем и отслеживаем реальный прогресс от занятия к занятию."
+          },
+          {
+            "id": "kids-growth",
+            "heading": "Поддержка в период роста",
+            "text": "Мягкое вытяжение снимает лишнее напряжение с растущих мышц и связок без тяжёлых весов."
+          },
+          {
+            "id": "kids-game",
+            "heading": "Интересный формат",
+            "text": "Занятия проходят в доброжелательной атмосфере с упражнениями на баланс, дыхание и внимательность."
+          },
+          {
+            "id": "kids-sport",
+            "heading": "База для детских секций",
+            "text": "Повышает гибкость, симметрию движений и выносливость юных спортсменов (плавание, единоборства, танцы, гимнастика)."
+          }
+        ],
+        "contraindicationsNote": "Программы проводятся по щадящему протоколу с минимальной начальной нагрузкой и присутствием родителей по желанию.",
+        "active": true
+      },
+      {
+        "id": "mb-moms",
+        "slug": "moms",
+        "badge": "Мамочки",
+        "title": "Мамочки ZA ПравИло",
+        "subtitle": "Бережное восстановление спины, шеи и осанки после беременности и забот о малыше",
+        "quoteOrMotto": "Забота о себе — лёгкая спина и ресурс для всей семьи!",
+        "promoBadge": "Деликатное восстановление спины и таза",
+        "heroImageUrl": "/src/assets/images/exercise_shoulder_open_1795103072729.jpg",
+        "accentTone": "rose",
+        "recommendedServiceCategory": "relax",
+        "recommendedServiceHint": "Мягкое восстановление спины, шеи и дыхательная разгрузка",
+        "summary": "Постоянное ношение малыша на руках, кормление и недосып создают хроническую перегрузку поясницы, шеи, грудного отдела и тазовой области. Занятия на тренажёре ПравИло мягко возвращают позвоночнику ось, снимают спазмы и дарят время глубокого телесного отдыха.",
+        "reasonsTitle": "Как методика помогает молодым и многодетным мамам",
+        "reasons": [
+          "Быстрая разгрузка поясницы, грудного отдела и шеи от ношения ребёнка на руках.",
+          "Мягкое выравнивание тазовой области и восстановление естественной осанки.",
+          "Снятие хронического мышечного напряжения, головных болей напряжения и зажимов в плечах.",
+          "Ускорение лимфотока, уменьшение отёчности и мягкая поддержка снижения веса.",
+          "Глубокая перезагрузка нервной системы: снятие тревожности, усталости и улучшение сна.",
+          "Деликатный подбор углов и индивидуальной нагрузки по самочувствию мамы."
+        ],
+        "featureCards": [
+          {
+            "id": "moms-back",
+            "heading": "Спина без тяжести",
+            "text": "Снятие компрессии с пояснично-крестцового отдела и раскрытие зажатых грудных мышц за одно занятие."
+          },
+          {
+            "id": "moms-lymph",
+            "heading": "Лёгкость и лимфодренаж",
+            "text": "Плавное растяжение и диафрагмальное дыхание запускают естественный лимфоток и возвращают тонус телу."
+          },
+          {
+            "id": "moms-relax",
+            "heading": "Личное время тишины",
+            "text": "50 минут осознанного расслабления, где не нужно ни о ком заботиться — только дыхание, мягкая тяга и восстановление."
+          },
+          {
+            "id": "moms-scale",
+            "heading": "Умный контроль формы",
+            "text": "В личном кабинете можно отслеживать динамику веса, % мышц, воды и осанки ДО/ПОСЛЕ без стресса и гонки."
+          }
+        ],
+        "contraindicationsNote": "Рекомендуется после завершения базового послеродового восстановления (или по согласованию с врачом при КС и особых показаниях).",
+        "active": true
+      }
+    ],
+    "equipmentAndSafety": "Каждая студия оснащена сертифицированными рамами ПравИло из цельного дерева и усиленного профиля, мягкими анатомическими хватами, автоматическим контролем давления/ЧСС и стерильной обработкой инвентаря после каждого гостя. Перед первой сессией обязательно учитываются противопоказания.",
+    "networkPhone": "+7 (495) 120-88-00",
+    "networkEmail": "care@etalon-pravilo.ru",
+    "socials": {
+      "website": "https://etalon-pravilo.ru",
+      "telegram": "https://t.me/etalon_pravilo",
+      "vk": "https://vk.com/etalon_pravilo",
+      "youtube": "https://youtube.com/@etalon_pravilo"
+    },
+    "updatedAt": "2026-11-23"
+  }
+}
