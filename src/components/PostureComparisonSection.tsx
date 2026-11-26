@@ -12,11 +12,16 @@ import {
   ClipboardCheck,
   ChevronDown,
   ChevronUp,
+  Grid,
 } from 'lucide-react';
 import type { ClientProfile, PostureAssessmentRecord, PostureViewProjection } from '../types';
 import {
+  MAX_GRID_DENSITY,
+  MIN_GRID_DENSITY,
   POSTURE_PROJECTION_LABELS,
   buildBeforeAfterComparison,
+  formatGridStepLabel,
+  normalizeGridDensity,
 } from '../utils/postureGeometry';
 import {
   MMT_RESULT_LABELS,
@@ -53,6 +58,8 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
     undefined
   );
   const [zoomRecord, setZoomRecord] = useState<PostureAssessmentRecord | null>(null);
+  const [zoomFineGrid, setZoomFineGrid] = useState(false);
+  const [zoomGridDensity, setZoomGridDensity] = useState(20);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [expandedPkIds, setExpandedPkIds] = useState<Record<string, boolean>>({});
 
@@ -272,7 +279,11 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                   <div className="flex items-center gap-1.5">
                     <button
                       type="button"
-                      onClick={() => setZoomRecord(rec)}
+                      onClick={() => {
+                        setZoomFineGrid(Boolean(rec.fineGrid));
+                        setZoomGridDensity(normalizeGridDensity(rec.gridDensity));
+                        setZoomRecord(rec);
+                      }}
                       className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-xs hover:opacity-85 cursor-pointer"
                     >
                       <Maximize2 className="w-3 h-3 text-cyan-600" />
@@ -329,6 +340,7 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                         laserHorizonsPct={rec.laserHorizonsPct}
                         laserTiltDeg={rec.laserTiltDeg}
                         fineGrid={rec.fineGrid}
+                        gridDensity={rec.gridDensity}
                         measurements={rec.beforeMeasurements}
                       />
                     </div>
@@ -347,6 +359,11 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                               {m.label}:
                             </span>
                             <span className="font-bold">{m.angleDeg.toFixed(1)}°</span>
+                            {m.type === 'joint' && (
+                              <span className="text-[10px] text-slate-500">
+                                (откл. {(m.deviationDeg ?? Math.abs(180 - m.angleDeg)).toFixed(1)}°)
+                              </span>
+                            )}
                           </span>
                         ))}
                       </div>
@@ -379,6 +396,7 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                             laserHorizonsPct={rec.laserHorizonsPct}
                             laserTiltDeg={rec.laserTiltDeg}
                             fineGrid={rec.fineGrid}
+                            gridDensity={rec.gridDensity}
                             measurements={rec.afterMeasurements}
                           />
                         </div>
@@ -397,6 +415,11 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                                   {m.label}:
                                 </span>
                                 <span className="font-bold">{m.angleDeg.toFixed(1)}°</span>
+                                {m.type === 'joint' && (
+                                  <span className="text-[10px] text-slate-500">
+                                    (откл. {(m.deviationDeg ?? Math.abs(180 - m.angleDeg)).toFixed(1)}°)
+                                  </span>
+                                )}
                               </span>
                             ))}
                           </div>
@@ -647,20 +670,55 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
       {zoomRecord && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 p-3 sm:p-6 overflow-y-auto">
           <div className="w-full max-w-5xl rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-4 sm:p-5 space-y-4">
-            <div className="flex items-center justify-between gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 dark:border-slate-800 pb-3">
               <div>
                 <div className="font-display text-base font-bold">
                   Сравнение ДО / ПОСЛЕ · {POSTURE_PROJECTION_LABELS[zoomRecord.projection]}
                 </div>
                 <div className="text-xs text-slate-500 font-mono">{zoomRecord.date}</div>
               </div>
-              <button
-                type="button"
-                onClick={() => setZoomRecord(null)}
-                className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
-              >
-                <X className="w-5 h-5" />
-              </button>
+              <div className="flex flex-wrap items-center gap-3">
+                <div className="flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 text-xs">
+                  <button
+                    type="button"
+                    onClick={() => setZoomFineGrid((g) => !g)}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium cursor-pointer ${
+                      zoomFineGrid
+                        ? 'bg-cyan-600 text-white'
+                        : 'bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200'
+                    }`}
+                  >
+                    <Grid className="w-3 h-3" />
+                    <span>Сетка</span>
+                  </button>
+                  <span className="text-[11px] text-slate-500 whitespace-nowrap">
+                    Плотность:
+                  </span>
+                  <input
+                    type="range"
+                    min={MIN_GRID_DENSITY}
+                    max={MAX_GRID_DENSITY}
+                    step={1}
+                    aria-label="Плотность сетки"
+                    value={zoomGridDensity}
+                    onChange={(e) => {
+                      setZoomGridDensity(Number(e.target.value));
+                      if (!zoomFineGrid) setZoomFineGrid(true);
+                    }}
+                    className="w-24 sm:w-28 accent-cyan-600 cursor-pointer"
+                  />
+                  <span className="font-mono text-[11px] font-semibold text-cyan-700 dark:text-cyan-300 min-w-[44px]">
+                    {formatGridStepLabel(zoomGridDensity)}
+                  </span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setZoomRecord(null)}
+                  className="p-2 rounded-lg text-slate-400 hover:text-slate-700 dark:hover:text-white cursor-pointer"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
             </div>
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div className="space-y-1.5">
@@ -678,7 +736,8 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                     laserPlumbXPct={zoomRecord.laserPlumbXPct}
                     laserHorizonsPct={zoomRecord.laserHorizonsPct}
                     laserTiltDeg={zoomRecord.laserTiltDeg}
-                    fineGrid={zoomRecord.fineGrid}
+                    fineGrid={zoomFineGrid}
+                    gridDensity={zoomGridDensity}
                     measurements={zoomRecord.beforeMeasurements}
                   />
                 </div>
@@ -699,7 +758,8 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                       laserPlumbXPct={zoomRecord.laserPlumbXPct}
                       laserHorizonsPct={zoomRecord.laserHorizonsPct}
                       laserTiltDeg={zoomRecord.laserTiltDeg}
-                      fineGrid={zoomRecord.fineGrid}
+                      fineGrid={zoomFineGrid}
+                      gridDensity={zoomGridDensity}
                       measurements={zoomRecord.afterMeasurements}
                     />
                   </div>

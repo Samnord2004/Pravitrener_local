@@ -32,6 +32,22 @@ export const LASER_HORIZON_NAMES: string[] = [
   'L5 Ноги',
 ];
 
+export const DEFAULT_GRID_DENSITY = 20;
+export const MIN_GRID_DENSITY = 4;
+export const MAX_GRID_DENSITY = 50;
+
+export function normalizeGridDensity(raw: unknown): number {
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return DEFAULT_GRID_DENSITY;
+  return Math.max(MIN_GRID_DENSITY, Math.min(MAX_GRID_DENSITY, Math.round(n)));
+}
+
+export function formatGridStepLabel(density: number): string {
+  const safe = normalizeGridDensity(density);
+  const step = 100 / safe;
+  return Number.isInteger(step) ? `${step}%` : `${Number(step.toFixed(1))}%`;
+}
+
 export function normalizeLaserHorizons(raw?: unknown): number[] {
   if (!Array.isArray(raw) || raw.length === 0) {
     return [...DEFAULT_LASER_HORIZONS];
@@ -118,6 +134,15 @@ export const POSTURE_MEASUREMENT_PRESETS: PostureMeasurementPreset[] = [
     type: 'tilt',
     color: '#14b8a6',
     recommendedViews: ['side_left', 'side_right'],
+  },
+  {
+    id: 'goniometer_arm',
+    region: 'shoulders',
+    label: 'Гониометр: плечо – локоть – запястье',
+    hint: 'Гониометр (3 точки): поставьте точку на плечевом суставе → локтевом суставе (вершина) → запястье; программа рассчитает угол и отклонение от 180°',
+    type: 'joint',
+    color: '#f97316',
+    recommendedViews: ['front', 'back', 'side_left', 'side_right'],
   },
   // Таз и поясница
   {
@@ -213,10 +238,11 @@ export const POSTURE_MEASUREMENT_PRESETS: PostureMeasurementPreset[] = [
   {
     id: 'custom_joint',
     region: 'spine',
-    label: 'Свободный угол (3 точки)',
-    hint: 'Кликните 3 точки (вторая точка — вершина угла)',
+    label: 'Гониометр: свободный угол (3 точки)',
+    hint: 'Инструмент «Гониометр»: поставьте 3 точки (плечо–локоть–запястье или любой сустав; вторая точка — вершина) для авторасчёта угла и отклонения от 180°',
     type: 'joint',
     color: '#84cc16',
+    recommendedViews: ['front', 'back', 'side_left', 'side_right'],
   },
 ];
 
@@ -571,6 +597,7 @@ export function sanitizePostureAssessmentInput(
       laserHorizonsPct,
       laserTiltDeg,
       fineGrid: Boolean(obj.fineGrid),
+      gridDensity: normalizeGridDensity(obj.gridDensity),
       beforeMeasurements,
       afterMeasurements,
       kinesiologyReport: sanitizedReport,

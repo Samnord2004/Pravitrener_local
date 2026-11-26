@@ -22,6 +22,7 @@ import type {
   Booking,
   BookingStatus,
   ClientProfile,
+  LegalAcceptanceRecord,
   PaymentStatus,
   RatingReview,
   ServiceItem,
@@ -32,6 +33,7 @@ import type {
 import { apiRequest } from '../utils/api';
 import { getRatingStats } from '../utils/reviews';
 import { RatingBadge } from './RatingStars';
+import { LegalAgreementsPanel } from './LegalAgreementsModal';
 import {
   formatStudioOpenHours,
   getStudioHoursBounds,
@@ -55,6 +57,8 @@ interface ScheduleProps {
   bookings: Booking[];
   schedules: TrainerSchedule[];
   reviews?: RatingReview[];
+  brandName?: string;
+  onLegalAccepted?: (res: { user: UserAccount; record: LegalAcceptanceRecord }) => void;
   onBookingCreated: (b: Booking) => void;
   onBookingUpdated: (b: Booking) => void;
   onBookingDeleted?: (id: string) => void;
@@ -209,6 +213,8 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
   bookings,
   schedules,
   reviews = [],
+  brandName,
+  onLegalAccepted,
   onBookingCreated,
   onBookingUpdated,
   onBookingDeleted,
@@ -1615,6 +1621,15 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
           })}
         </div>
       </div>
+
+      {currentUser.role === 'admin' && (
+        <LegalAgreementsPanel
+          currentUser={currentUser}
+          brandName={brandName}
+          compact
+          onAccepted={onLegalAccepted}
+        />
+      )}
 
       {/* Modal: Expanded Booking Card & Real-time Editor */}
       {expandedBooking && (

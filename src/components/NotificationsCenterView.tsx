@@ -16,11 +16,13 @@ import {
   CheckCircle2,
   AlertCircle,
   Search,
+  Scale,
 } from 'lucide-react';
 import type {
   Booking,
   ClientProfile,
   ClientSubscription,
+  LegalAcceptanceRecord,
   MessagingSettings,
   MessengerChannel,
   MessengerMessage,
@@ -29,10 +31,13 @@ import type {
   NotificationTemplate,
   PromoCode,
   Studio,
+  UserAccount,
 } from '../types';
 import { apiRequest } from '../utils/api';
+import { LegalAgreementsPanel, OwnerLegalConfirmationsPanel } from './LegalAgreementsModal';
 
 interface NotificationsCenterProps {
+  currentUser?: UserAccount;
   studios: Studio[];
   clients: ClientProfile[];
   bookings: Booking[];
@@ -43,6 +48,10 @@ interface NotificationsCenterProps {
   messagingSettings?: MessagingSettings;
   messengerMessages: MessengerMessage[];
   birthdayAutomationEnabled?: boolean;
+  legalAcceptances?: LegalAcceptanceRecord[];
+  brandName?: string;
+  onLegalAccepted?: (res: { user: UserAccount; record: LegalAcceptanceRecord }) => void;
+  onLegalMarkedRead?: (rec: LegalAcceptanceRecord) => void;
   onBirthdayAutomationToggle?: (enabled: boolean) => void;
   onTemplateAdded: (t: NotificationTemplate) => void;
   onLogsAdded: (logs: NotificationLog[]) => void;
@@ -71,6 +80,7 @@ const SMTP_PRESETS = [
 ];
 
 export const NotificationsCenterView: React.FC<NotificationsCenterProps> = ({
+  currentUser,
   studios,
   clients,
   bookings,
@@ -81,6 +91,10 @@ export const NotificationsCenterView: React.FC<NotificationsCenterProps> = ({
   messagingSettings,
   messengerMessages,
   birthdayAutomationEnabled = true,
+  legalAcceptances = [],
+  brandName,
+  onLegalAccepted,
+  onLegalMarkedRead,
   onBirthdayAutomationToggle,
   onTemplateAdded,
   onLogsAdded,
@@ -89,7 +103,10 @@ export const NotificationsCenterView: React.FC<NotificationsCenterProps> = ({
   onMessengerMarkedRead,
   onOpenPublicBookingPreview,
 }) => {
-  const [subTab, setSubTab] = useState<'inbox' | 'broadcast' | 'settings' | 'online_links'>('inbox');
+  const [subTab, setSubTab] = useState<'inbox' | 'broadcast' | 'settings' | 'online_links' | 'legal'>('inbox');
+  const unreadLegalCount = legalAcceptances.filter(
+    (r) => r.ownerNotificationStatus !== 'read_by_owner'
+  ).length;
 
   // --- INBOX STATE ---
   const [selectedChatClientId, setSelectedChatClientId] = useState<string>(clients[0]?.id || '');
@@ -536,6 +553,22 @@ export const NotificationsCenterView: React.FC<NotificationsCenterProps> = ({
           >
             <QrCode className="w-3.5 h-3.5 st-accent-text" />
             <span>Онлайн-запись (ссылки)</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setSubTab('legal')}
+            className={`inline-flex items-center gap-2 px-3.5 py-2 text-xs font-medium rounded-lg cursor-pointer transition-colors ${
+              subTab === 'legal' ? 'st-surface shadow-sm font-semibold' : 'st-muted hover:opacity-90'
+            }`}
+          >
+            <Scale className="w-3.5 h-3.5 st-accent-text" />
+            <span>Юридические соглашения</span>
+            {currentUser?.role === 'owner' && unreadLegalCount > 0 && (
+              <span className="font-mono text-[11px] font-bold text-amber-600 dark:text-amber-400">
+                · +{unreadLegalCount}
+              </span>
+            )}
           </button>
         </div>
 
@@ -1562,6 +1595,25 @@ export const NotificationsCenterView: React.FC<NotificationsCenterProps> = ({
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* ==================== TAB 5: LEGAL AGREEMENTS & OWNER CONFIRMATIONS ==================== */}
+      {subTab === 'legal' && (
+        <div className="space-y-5">
+          {currentUser?.role === 'owner' && (
+            <OwnerLegalConfirmationsPanel
+              confirmations={legalAcceptances}
+              onMarkedRead={onLegalMarkedRead}
+            />
+          )}
+          {currentUser && (
+            <LegalAgreementsPanel
+              currentUser={currentUser}
+              brandName={brandName}
+              onAccepted={onLegalAccepted}
+            />
+          )}
         </div>
       )}
 

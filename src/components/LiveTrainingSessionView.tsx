@@ -476,7 +476,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
   const handleMeasureBpBle = async (phase: 'before' | 'after', acceptAllDevices?: boolean) => {
     if (bpMeasuringPhase) return;
     setBpMeasuringPhase(phase);
-    setBpBleStatus({ phase, progressMsg: 'Поиск тонометра (BleModule / YK-IBPA1 / 0x1810)...' });
+    setBpBleStatus({ phase, progressMsg: 'Поиск тонометра (BLE 0x1810)...' });
     try {
       const b05Dev = equipment.find((d) => d.type === 'bp_b05');
       let lastPatchAt = 0;
@@ -901,7 +901,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
               <h3 className="font-display text-sm sm:text-base font-semibold">
-                Нагрузка на конечности (ESP32)
+                Тензодатчики конечностей
               </h3>
               <span className="text-xs text-slate-500">
                 Симметрия: <span className="font-mono font-semibold text-slate-900 dark:text-white tabular-nums">{symmetryPct}%</span>
@@ -1179,11 +1179,11 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                       const wahoo = equipment.find((e) => e.type === 'wahoo_tickr');
                       if (wahoo) toggleEquipmentConnect(wahoo, 'web_bluetooth', true);
                     }}
-                    title="Открыть полный список всех BLE-устройств для Wahoo TICKR FIT"
+                    title="Открыть полный список всех BLE-устройств для пульсометра"
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-[10px] font-medium hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer whitespace-nowrap"
                   >
                     <HeartPulse className="w-3 h-3 text-rose-500" />
-                    <span>Wahoo: все BLE</span>
+                    <span>Пульсометр: все BLE</span>
                   </button>
                 )}
                 {equipment.some((e) => e.type === 'bp_b05') && (
@@ -1194,11 +1194,11 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                       const b05 = equipment.find((e) => e.type === 'bp_b05');
                       if (b05) toggleEquipmentConnect(b05, 'web_bluetooth', true);
                     }}
-                    title="Открыть полный список всех BLE-устройств для тонометра B05"
+                    title="Открыть полный список всех BLE-устройств для тонометра"
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-[10px] font-medium hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer whitespace-nowrap"
                   >
                     <Gauge className="w-3 h-3 text-cyan-600" />
-                    <span>B05: все BLE</span>
+                    <span>Тонометр: все BLE</span>
                   </button>
                 )}
                 {equipment.find((e) => e.type === 'esp32_limbs') && (
@@ -1209,11 +1209,11 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                       const esp = equipment.find((e) => e.type === 'esp32_limbs');
                       if (esp) toggleEquipmentConnect(esp, 'web_serial');
                     }}
-                    title="Подключить ESP32 по USB-кабелю (Web Serial)"
+                    title="Подключить тензодатчики конечностей по USB-кабелю (Web Serial)"
                     className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-slate-200 dark:border-slate-700 text-[10px] font-medium hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer whitespace-nowrap"
                   >
                     <Usb className="w-3 h-3" />
-                    <span>ESP32 USB</span>
+                    <span>Тензодатчики USB</span>
                   </button>
                 )}
               </div>
@@ -1331,7 +1331,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
 
               <div>
                 <label className="block text-[11px] font-medium text-slate-500 mb-1 truncate">
-                  С датчика ESP32, кг
+                  Тензодатчики, кг
                 </label>
                 <div
                   className={`w-full px-2.5 py-1.5 text-sm font-mono font-semibold rounded-lg border bg-slate-50 dark:bg-slate-950/70 tabular-nums flex items-center justify-between ${
@@ -1398,7 +1398,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                   {!esp32Connected && <Unplug className="w-3 h-3 text-amber-500" />}
                   {esp32Connected
                     ? `Порог: жёлтый ≥ ${Math.round(safeTargetWinchKg * 0.85)} кг · красный ≥ ${safeTargetWinchKg} кг`
-                    : 'Подключите ESP32 (BLE / USB / Wi-Fi) для реальной тяги'}
+                    : 'Подключите тензодатчики конечностей (BLE / USB / Wi-Fi)'}
                 </span>
               </div>
             </div>
@@ -1413,7 +1413,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 min-w-0">
               <h3 className="font-display text-xs sm:text-sm font-semibold truncate">
-                График MYOblue v1.2 и тяги
+                График миодатчиков и тяги
               </h3>
               <span className="text-[11px] text-slate-500">
                 Пульс:{' '}
@@ -1496,19 +1496,19 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
               <span className="w-3 h-0.5 border-t border-dashed border-amber-500 inline-block" /> Порог ({safeTargetWinchKg} кг)
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-3 h-0.5 bg-amber-500 inline-block" /> MYOblue CH1 (мВ)
+              <span className="w-3 h-0.5 bg-amber-500 inline-block" /> Миодатчик CH1 (мВ)
             </span>
             <span className="inline-flex items-center gap-1.5">
-              <span className="w-3 h-0.5 bg-emerald-500 inline-block" /> MYOblue CH2 (мВ)
+              <span className="w-3 h-0.5 bg-emerald-500 inline-block" /> Миодатчик CH2 (мВ)
             </span>
           </div>
         </div>
 
-        {/* Bottom-Right: Height Before/After, BLE Tonometer B05 BP & Notes */}
+        {/* Bottom-Right: Height Before/After, BLE Tonometer BP & Notes */}
         <div className="lg:col-span-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-1.5">
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             <h3 className="font-display text-xs sm:text-sm font-semibold">
-              Замеры (Рост / BLE Тонометр B05)
+              Замеры (Рост / Тонометр)
             </h3>
             <div className="flex flex-wrap items-center gap-1.5">
               <button
@@ -1558,7 +1558,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                   <Loader2 className="w-3 h-3 animate-spin shrink-0" />
                   <span>
                     {bpBleStatus?.progressMsg ||
-                      `Тонометр B05 BLE (0x1810): накачка манжеты (${bpMeasuringPhase === 'before' ? 'до' : 'после'})...`}
+                      `Тонометр (0x1810): накачка манжеты (${bpMeasuringPhase === 'before' ? 'до' : 'после'})...`}
                   </span>
                 </span>
               ) : bpBleStatus?.error ? (
@@ -1588,7 +1588,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                 <div className="flex flex-wrap items-center justify-between w-full gap-2">
                   <span className="font-mono text-slate-600 dark:text-slate-300 tabular-nums truncate">
                     {bpBleStatus?.sys
-                      ? `B05 (${bpBleStatus.phase === 'before' ? 'До' : 'После'}): ${bpBleStatus.sys}/${bpBleStatus.dia} · Пульс ${bpBleStatus.pulse} · MAP ${bpBleStatus.map}`
+                      ? `Тонометр (${bpBleStatus.phase === 'before' ? 'До' : 'После'}): ${bpBleStatus.sys}/${bpBleStatus.dia} · Пульс ${bpBleStatus.pulse} · MAP ${bpBleStatus.map}`
                       : 'АД до/после зафиксировано'}
                   </span>
                   <div className="flex items-center gap-2 shrink-0">
@@ -1646,7 +1646,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
             </div>
             <div>
               <label className="block text-[10px] font-medium text-slate-500 mb-0.5 truncate">
-                АД до (B05)
+                АД до (тонометр)
               </label>
               <input
                 type="text"
@@ -1657,7 +1657,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
             </div>
             <div>
               <label className="block text-[10px] font-medium text-slate-500 mb-0.5 truncate">
-                АД после (B05)
+                АД после (тонометр)
               </label>
               <input
                 type="text"

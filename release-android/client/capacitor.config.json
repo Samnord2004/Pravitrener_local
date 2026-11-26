@@ -1,0 +1,14 @@
+{
+  "appId": "ru.etalonpravilo.client",
+  "appName": "ЭТАЛОН ПРАВИЛО — Клиент",
+  "webDir": "../../dist",
+  "server": {
+    "url": "https://studio.yourdomain.ru/?app=client",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f8fafc"
+  }
+}

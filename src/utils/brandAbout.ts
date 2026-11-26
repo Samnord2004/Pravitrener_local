@@ -136,7 +136,7 @@ export const DEFAULT_METHODOLOGY_BLOCKS: MethodologyProgramBlock[] = [
       },
     ],
     contraindicationsNote:
-      'Идеально после рабочего дня: мягкий вход в тягу под контролем ЧСС (Wahoo TICKR FIT) и тонометра до/после практики.',
+      'Идеально после рабочего дня: мягкий вход в тягу под контролем пульсометра и тонометра до/после практики.',
     active: true,
   },
   {
@@ -291,6 +291,18 @@ export const DEFAULT_METHODOLOGY_BLOCKS: MethodologyProgramBlock[] = [
 export const DEFAULT_BRAND_ABOUT: BrandAboutInfo = {
   brandName: 'ЭТАЛОН ПРАВИЛО',
   tagline: 'Биомеханическая декомпрессия, восстановление осанки и телеметрический контроль здоровья',
+  logoUrl: '/assets/aistudio/logo_full_etalon.png',
+  logoIconUrl: '/assets/aistudio/logo_icon_etalon.png',
+  homeBadge: 'Сеть студий биомеханической коррекции',
+  homeTitle: 'Управление студией, запись и живая телеметрия тренировок',
+  homeSubtitle:
+    'Единая платформа для владельца сети, администраторов, тренеров и клиентов с поддержкой миодатчиков, пульсометра, тонометра, весов и тензодатчиков конечностей, позволяющих точно фиксировать нагрузку.',
+  homeHeroImageUrl: '/assets/aistudio/IMG_6064_172a7fc2.JPG',
+  homeHighlights: [
+    { value: '3', label: 'Студии в сети' },
+    { value: '5 BLE', label: 'Датчиков в реальном времени' },
+    { value: 'PWA + ПК', label: 'Веб, десктоп и домен' },
+  ],
   aboutNetwork:
     'Сеть студий «ЭТАЛОН ПРАВИЛО» объединяет бережные телесные практики на древнеславянском тренажёре ПравИло и современные технологии объективной диагностики. Мы работаем с осанкой, хроническим напряжением спины и шеи, восстановлением после нагрузок и повышением жизненного тонуса.',
   methodologyTitle: 'О методике ПравИло',
@@ -298,10 +310,10 @@ export const DEFAULT_BRAND_ABOUT: BrandAboutInfo = {
     'Методика основана на мягком симметричном осевом вытяжении тела в четырёх векторах (руки и ноги) с точным подбором стоек, углов и дозированной тяги. В отличие от грубых манипуляций, плавное горизонтальное вытяжение в сочетании с диафрагмальным дыханием снимает компрессию с межпозвонковых дисков, раскрывает грудной отдел, выравнивает фасциальные цепи и активирует глубокие мышцы-стабилизаторы.',
   whyUsTitle: 'Почему выбирают сеть «ЭТАЛОН ПРАВИЛО»',
   whyUsPoints: [
-    'Точная телеметрия вместо тяги «на глаз»: тензодатчики ESP32 фиксируют нагрузку в килограммах по каждой конечности в реальном времени.',
+    'Точная телеметрия вместо тяги «на глаз»: тензодатчики конечностей позволяют точно фиксировать нагрузку в килограммах по каждой конечности в реальном времени.',
     'Фотопротокол осанки «ДО / ПОСЛЕ» с лазерным уровнем и замером углов перекоса плеч, таза и позвоночника.',
-    'Контроль мышечного отклика (миография MYOblue EMG), пульса и давления перед выходом на раму и после сессии.',
-    'Состав тела и динамика на весах Mi Body Composition Scale 2 с подробной расшифровкой каждого показателя в кабинете клиента.',
+    'Контроль мышечного отклика (миография и миодатчики), пульса и давления (пульсометр и тонометр) перед выходом на раму и после сессии.',
+    'Состав тела и динамика на весах с подробной расшифровкой каждого показателя в кабинете клиента.',
     'Индивидуальная матрица стоек (1–7) и углов (0–6) под антропометрию и задачи каждого гостя — от бережного релакса до спортивного восстановления.',
     'Сертифицированные специалисты со стажем от 6 до 9+ лет и открытыми публичными отзывами клиентов.',
   ],
@@ -416,7 +428,7 @@ function sanitizeHeroImageUrl(raw: unknown): string {
   if (/^https?:\/\//i.test(val)) {
     return val.slice(0, 500);
   }
-  if (/^data:image\/(jpeg|jpg|png|webp|gif);base64,/i.test(val) && val.length <= 2_500_000) {
+  if (/^data:image\/(jpeg|jpg|png|webp|gif|svg\+xml);base64,/i.test(val) && val.length <= 2_500_000) {
     return val;
   }
   return '';
@@ -564,9 +576,48 @@ export function sanitizeBrandAboutInput(
       ? sanitizeMethodologyBlocks(src.methodologyBlocks, fallbackBlocks)
       : fallbackBlocks;
 
+  const fallbackHighlights = fallback.homeHighlights || DEFAULT_BRAND_ABOUT.homeHighlights || [];
+  const rawHighlights = Array.isArray(src.homeHighlights) ? src.homeHighlights : fallbackHighlights;
+  const homeHighlights = rawHighlights
+    .filter((h): h is Record<string, unknown> => Boolean(h && typeof h === 'object'))
+    .map((h) => ({
+      value: typeof h.value === 'string' ? h.value.trim().slice(0, 40) : '',
+      label: typeof h.label === 'string' ? h.label.trim().slice(0, 80) : '',
+    }))
+    .filter((h) => h.value || h.label)
+    .slice(0, 4);
+
+  const logoUrl =
+    src.logoUrl !== undefined
+      ? sanitizeHeroImageUrl(src.logoUrl) || DEFAULT_BRAND_ABOUT.logoUrl
+      : fallback.logoUrl || DEFAULT_BRAND_ABOUT.logoUrl;
+  const logoIconUrl =
+    src.logoIconUrl !== undefined
+      ? sanitizeHeroImageUrl(src.logoIconUrl) || DEFAULT_BRAND_ABOUT.logoIconUrl
+      : fallback.logoIconUrl || DEFAULT_BRAND_ABOUT.logoIconUrl;
+  const homeHeroImageUrl =
+    src.homeHeroImageUrl !== undefined
+      ? sanitizeHeroImageUrl(src.homeHeroImageUrl) || DEFAULT_BRAND_ABOUT.homeHeroImageUrl
+      : fallback.homeHeroImageUrl || DEFAULT_BRAND_ABOUT.homeHeroImageUrl;
+
   return {
     brandName: str('brandName', 100, fallback.brandName) || fallback.brandName,
     tagline: str('tagline', 240, fallback.tagline),
+    logoUrl,
+    logoIconUrl,
+    homeBadge:
+      str('homeBadge', 140, fallback.homeBadge || DEFAULT_BRAND_ABOUT.homeBadge || '') ||
+      DEFAULT_BRAND_ABOUT.homeBadge,
+    homeTitle:
+      str('homeTitle', 200, fallback.homeTitle || DEFAULT_BRAND_ABOUT.homeTitle || '') ||
+      DEFAULT_BRAND_ABOUT.homeTitle,
+    homeSubtitle: str(
+      'homeSubtitle',
+      600,
+      fallback.homeSubtitle || DEFAULT_BRAND_ABOUT.homeSubtitle || ''
+    ),
+    homeHeroImageUrl,
+    homeHighlights: homeHighlights.length > 0 ? homeHighlights : fallbackHighlights,
     aboutNetwork: str('aboutNetwork', 2500, fallback.aboutNetwork),
     methodologyTitle:
       str('methodologyTitle', 160, fallback.methodologyTitle) ||

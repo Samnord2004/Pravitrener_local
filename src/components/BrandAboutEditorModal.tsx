@@ -7,13 +7,64 @@ import type {
   ServiceCategory,
 } from '../types';
 import { apiRequest } from '../utils/api';
-import { DEFAULT_METHODOLOGY_BLOCKS } from '../utils/brandAbout';
+import { DEFAULT_BRAND_ABOUT, DEFAULT_METHODOLOGY_BLOCKS } from '../utils/brandAbout';
 import { SERVICE_CATEGORY_OPTIONS } from '../utils/serviceCategories';
 import { STUDIO_PHOTO_PRESETS, compressStudioPhoto } from '../utils/reviews';
 
+async function compressLogoImage(file: File): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error('Не удалось прочитать файл логотипа'));
+    reader.onload = () => {
+      const rawUrl = typeof reader.result === 'string' ? reader.result : '';
+      if (!rawUrl) {
+        reject(new Error('Пустой файл изображения'));
+        return;
+      }
+      if (/^data:image\/svg\+xml;base64,/i.test(rawUrl)) {
+        if (rawUrl.length > 1_500_000) {
+          reject(new Error('Файл SVG слишком большой (макс. 1 МБ)'));
+          return;
+        }
+        resolve(rawUrl);
+        return;
+      }
+      const img = new Image();
+      img.onerror = () => reject(new Error('Файл не является корректным изображением'));
+      img.onload = () => {
+        const maxSide = 640;
+        let { width, height } = img;
+        if (width > maxSide || height > maxSide) {
+          const ratio = Math.min(maxSide / width, maxSide / height);
+          width = Math.max(1, Math.round(width * ratio));
+          height = Math.max(1, Math.round(height * ratio));
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          resolve(rawUrl);
+          return;
+        }
+        ctx.clearRect(0, 0, width, height);
+        ctx.drawImage(img, 0, 0, width, height);
+        try {
+          const pngUrl = canvas.toDataURL('image/png');
+          resolve(pngUrl);
+        } catch {
+          resolve(rawUrl);
+        }
+      };
+      img.src = rawUrl;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
 interface BrandAboutEditorModalProps {
   initialBrandAbout: BrandAboutInfo;
-  initialTab?: 'general' | 'blocks';
+  initialTab?: 'general' | 'blocks' | 'branding';
   onSaved: (updated: BrandAboutInfo) => void;
   onClose: () => void;
 }
@@ -32,7 +83,31 @@ export const BrandAboutEditorModal: React.FC<BrandAboutEditorModalProps> = ({
   onSaved,
   onClose,
 }) => {
-  const [editorTab, setEditorTab] = useState<'general' | 'blocks'>(initialTab);
+  const [editorTab, setEditorTab] = useState<'general' | 'blocks' | 'branding'>(initialTab);
+
+  const [logoUrl, setLogoUrl] = useState(
+    initialBrandAbout.logoUrl || DEFAULT_BRAND_ABOUT.logoUrl || ''
+  );
+  const [logoIconUrl, setLogoIconUrl] = useState(
+    initialBrandAbout.logoIconUrl || DEFAULT_BRAND_ABOUT.logoIconUrl || ''
+  );
+  const [homeBadge, setHomeBadge] = useState(
+    initialBrandAbout.homeBadge || DEFAULT_BRAND_ABOUT.homeBadge || ''
+  );
+  const [homeTitle, setHomeTitle] = useState(
+    initialBrandAbout.homeTitle || DEFAULT_BRAND_ABOUT.homeTitle || ''
+  );
+  const [homeSubtitle, setHomeSubtitle] = useState(
+    initialBrandAbout.homeSubtitle ?? DEFAULT_BRAND_ABOUT.homeSubtitle ?? ''
+  );
+  const [homeHeroImageUrl, setHomeHeroImageUrl] = useState(
+    initialBrandAbout.homeHeroImageUrl || DEFAULT_BRAND_ABOUT.homeHeroImageUrl || ''
+  );
+  const [homeHighlights, setHomeHighlights] = useState<{ value: string; label: string }[]>(() =>
+    initialBrandAbout.homeHighlights && initialBrandAbout.homeHighlights.length > 0
+      ? initialBrandAbout.homeHighlights
+      : DEFAULT_BRAND_ABOUT.homeHighlights || []
+  );
 
   const [brandName, setBrandName] = useState(initialBrandAbout.brandName || '');
   const [tagline, setTagline] = useState(initialBrandAbout.tagline || '');
@@ -171,6 +246,13 @@ export const BrandAboutEditorModal: React.FC<BrandAboutEditorModalProps> = ({
         body: JSON.stringify({
           brandName,
           tagline,
+          logoUrl,
+          logoIconUrl,
+          homeBadge,
+          homeTitle,
+          homeSubtitle,
+          homeHeroImageUrl,
+          homeHighlights,
           aboutNetwork,
           methodologyTitle,
           methodologyDescription,
@@ -251,6 +333,15 @@ export const BrandAboutEditorModal: React.FC<BrandAboutEditorModalProps> = ({
             }`}
           >
             Блоки методик (Спорт, Офис, Возраст, Дети, Мамочки — {methodologyBlocks.length})
+          </button>
+          <button
+            type="button"
+            onClick={() => setEditorTab('branding')}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold cursor-pointer ${
+              editorTab === 'branding' ? 'st-accent-bg' : 'st-surface border st-border st-muted'
+            }`}
+          >
+            Логотип и главная страница
           </button>
         </div>
 
@@ -878,6 +969,360 @@ export const BrandAboutEditorModal: React.FC<BrandAboutEditorModalProps> = ({
                   </div>
                 </div>
               )}
+            </div>
+          )}
+
+          {editorTab === 'branding' && (
+            <div className="space-y-5">
+              {/* Logos */}
+              <div className="p-4 rounded-xl st-surface-muted border st-border space-y-4">
+                <div>
+                  <div className="font-semibold text-sm">Логотип студии / сети</div>
+                  <p className="text-[11px] st-muted mt-0.5">
+                    Отображается на стартовой странице, в боковом меню приложения и на странице онлайн-записи. Поддерживается PNG/SVG с прозрачным фоном.
+                  </p>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {/* Full Logo */}
+                  <div className="p-3 rounded-xl st-surface border st-border space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">Основной логотип</span>
+                      <div className="flex items-center gap-1.5">
+                        <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border st-border st-surface-muted font-medium cursor-pointer hover:opacity-85">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Загрузить</span>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file) return;
+                              setError('');
+                              try {
+                                const imgUrl = await compressLogoImage(file);
+                                setLogoUrl(imgUrl);
+                              } catch (err) {
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Не удалось загрузить логотип'
+                                );
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setLogoUrl(DEFAULT_BRAND_ABOUT.logoUrl || '')}
+                          title="Восстановить стандартный логотип"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border st-border st-surface text-[11px] st-muted hover:opacity-85 cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Сброс</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="h-16 rounded-lg bg-white border st-border px-3 py-2 flex items-center justify-center">
+                      {logoUrl ? (
+                        <img
+                          src={logoUrl}
+                          alt="Основной логотип"
+                          className="max-h-full max-w-full object-contain"
+                        />
+                      ) : (
+                        <span className="text-[11px] text-slate-400">Логотип не выбран</span>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={logoUrl}
+                      onChange={(e) => setLogoUrl(e.target.value)}
+                      placeholder="/assets/aistudio/logo_full_etalon.png или https://..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border st-border st-surface font-mono text-[11px]"
+                    />
+                  </div>
+
+                  {/* Compact Icon Logo */}
+                  <div className="p-3 rounded-xl st-surface border st-border space-y-2.5">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold">Иконка (свёрнутое меню)</span>
+                      <div className="flex items-center gap-1.5">
+                        <label className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border st-border st-surface-muted font-medium cursor-pointer hover:opacity-85">
+                          <Upload className="w-3.5 h-3.5" />
+                          <span>Загрузить</span>
+                          <input
+                            type="file"
+                            accept="image/png,image/jpeg,image/webp,image/svg+xml"
+                            onChange={async (e) => {
+                              const file = e.target.files?.[0];
+                              e.target.value = '';
+                              if (!file) return;
+                              setError('');
+                              try {
+                                const imgUrl = await compressLogoImage(file);
+                                setLogoIconUrl(imgUrl);
+                              } catch (err) {
+                                setError(
+                                  err instanceof Error
+                                    ? err.message
+                                    : 'Не удалось загрузить иконку'
+                                );
+                              }
+                            }}
+                            className="hidden"
+                          />
+                        </label>
+                        <button
+                          type="button"
+                          onClick={() => setLogoIconUrl(DEFAULT_BRAND_ABOUT.logoIconUrl || '')}
+                          title="Восстановить стандартную иконку"
+                          className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border st-border st-surface text-[11px] st-muted hover:opacity-85 cursor-pointer"
+                        >
+                          <RotateCcw className="w-3 h-3" />
+                          <span>Сброс</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="h-16 rounded-lg bg-white border st-border px-3 py-2 flex items-center justify-center">
+                      {logoIconUrl ? (
+                        <img
+                          src={logoIconUrl}
+                          alt="Иконка логотипа"
+                          className="h-11 w-11 object-contain"
+                        />
+                      ) : (
+                        <span className="text-[11px] text-slate-400">Иконка не выбрана</span>
+                      )}
+                    </div>
+
+                    <input
+                      type="text"
+                      value={logoIconUrl}
+                      onChange={(e) => setLogoIconUrl(e.target.value)}
+                      placeholder="/assets/aistudio/logo_icon_etalon.png или https://..."
+                      className="w-full px-2.5 py-1.5 rounded-lg border st-border st-surface font-mono text-[11px]"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* Home Page Texts & Hero Background */}
+              <div className="p-4 rounded-xl st-surface-muted border st-border space-y-3">
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <div className="font-semibold text-sm">
+                      Тексты и обложка главной (стартовой) страницы
+                    </div>
+                    <p className="text-[11px] st-muted mt-0.5">
+                      Отображается на экране входа в систему до авторизации
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setHomeBadge(DEFAULT_BRAND_ABOUT.homeBadge || '');
+                      setHomeTitle(DEFAULT_BRAND_ABOUT.homeTitle || '');
+                      setHomeSubtitle(DEFAULT_BRAND_ABOUT.homeSubtitle || '');
+                      setHomeHeroImageUrl(DEFAULT_BRAND_ABOUT.homeHeroImageUrl || '');
+                      setHomeHighlights(DEFAULT_BRAND_ABOUT.homeHighlights || []);
+                    }}
+                    className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-lg border st-border st-surface font-medium cursor-pointer hover:opacity-85"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span>Сбросить тексты</span>
+                  </button>
+                </div>
+
+                <div>
+                  <label className="block st-muted mb-1">Надзаголовок (строка над заголовком)</label>
+                  <input
+                    type="text"
+                    value={homeBadge}
+                    onChange={(e) => setHomeBadge(e.target.value)}
+                    placeholder="Сеть студий биомеханической коррекции"
+                    className="w-full px-3 py-2 rounded-lg border st-border st-surface"
+                  />
+                </div>
+
+                <div>
+                  <label className="block st-muted mb-1">Главный заголовок стартовой страницы</label>
+                  <input
+                    type="text"
+                    required
+                    value={homeTitle}
+                    onChange={(e) => setHomeTitle(e.target.value)}
+                    placeholder="Управление студией, запись и живая телеметрия тренировок"
+                    className="w-full px-3 py-2 rounded-lg border st-border st-surface font-semibold"
+                  />
+                </div>
+
+                <div>
+                  <label className="block st-muted mb-1">Подзаголовок / приветственный текст</label>
+                  <textarea
+                    rows={3}
+                    value={homeSubtitle}
+                    onChange={(e) => setHomeSubtitle(e.target.value)}
+                    placeholder="Единая платформа для владельца сети, администраторов, тренеров и клиентов..."
+                    className="w-full px-3 py-2 rounded-lg border st-border st-surface"
+                  />
+                </div>
+
+                {/* Home Hero Image */}
+                <div className="p-3 rounded-lg st-surface border st-border space-y-2">
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-semibold">Фоновое фото стартовой страницы</span>
+                    <label className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg border st-border st-surface-muted font-medium cursor-pointer hover:opacity-85">
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>Загрузить фото</span>
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          e.target.value = '';
+                          if (!file) return;
+                          setError('');
+                          try {
+                            const compressed = await compressStudioPhoto(file);
+                            setHomeHeroImageUrl(compressed);
+                          } catch (err) {
+                            setError(
+                              err instanceof Error
+                                ? err.message
+                                : 'Не удалось загрузить изображение'
+                            );
+                          }
+                        }}
+                        className="hidden"
+                      />
+                    </label>
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    <select
+                      value={
+                        STUDIO_PHOTO_PRESETS.some((p) => p.url === homeHeroImageUrl)
+                          ? homeHeroImageUrl
+                          : ''
+                      }
+                      onChange={(e) => {
+                        if (e.target.value) setHomeHeroImageUrl(e.target.value);
+                      }}
+                      className="px-2.5 py-1.5 rounded-lg border st-border st-surface"
+                    >
+                      <option value="">Выбрать готовое фото студии...</option>
+                      {STUDIO_PHOTO_PRESETS.map((p) => (
+                        <option key={p.url} value={p.url}>
+                          {p.label}
+                        </option>
+                      ))}
+                    </select>
+                    <input
+                      type="text"
+                      value={homeHeroImageUrl}
+                      onChange={(e) => setHomeHeroImageUrl(e.target.value)}
+                      placeholder="/assets/aistudio/... или https://..."
+                      className="px-2.5 py-1.5 rounded-lg border st-border st-surface font-mono text-[11px]"
+                    />
+                  </div>
+                  {homeHeroImageUrl && (
+                    <div className="flex items-center gap-3 pt-1">
+                      <img
+                        src={homeHeroImageUrl}
+                        alt="Обложка стартовой страницы"
+                        className="w-28 h-16 object-cover rounded border st-border"
+                      />
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHomeHeroImageUrl(DEFAULT_BRAND_ABOUT.homeHeroImageUrl || '')
+                        }
+                        className="text-[11px] st-accent-text hover:underline cursor-pointer"
+                      >
+                        Вернуть стандартное фото
+                      </button>
+                    </div>
+                  )}
+                </div>
+
+                {/* Key Highlights */}
+                <div className="space-y-2 pt-1">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-semibold">
+                      Ключевые показатели на стартовой странице (до 4)
+                    </span>
+                    {homeHighlights.length < 4 && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setHomeHighlights((prev) => [
+                            ...prev,
+                            { value: '100%', label: 'Индивидуальный подход' },
+                          ])
+                        }
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg st-accent-bg font-medium cursor-pointer"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        <span>Добавить показатель</span>
+                      </button>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+                    {homeHighlights.map((hl, idx) => (
+                      <div
+                        key={idx}
+                        className="p-2.5 rounded-lg st-surface border st-border space-y-1.5"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <input
+                            type="text"
+                            value={hl.value}
+                            onChange={(e) =>
+                              setHomeHighlights((prev) =>
+                                prev.map((it, i) =>
+                                  i === idx ? { ...it, value: e.target.value } : it
+                                )
+                              )
+                            }
+                            placeholder="Значение (напр. 3)"
+                            className="flex-1 min-w-0 px-2 py-1 rounded border st-border st-surface font-mono font-bold"
+                          />
+                          {homeHighlights.length > 1 && (
+                            <button
+                              type="button"
+                              onClick={() =>
+                                setHomeHighlights((prev) => prev.filter((_, i) => i !== idx))
+                              }
+                              className="p-1 rounded border st-border text-rose-600 cursor-pointer"
+                              aria-label="Удалить показатель"
+                            >
+                              <Trash2 className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="text"
+                          value={hl.label}
+                          onChange={(e) =>
+                            setHomeHighlights((prev) =>
+                              prev.map((it, i) =>
+                                i === idx ? { ...it, label: e.target.value } : it
+                              )
+                            )
+                          }
+                          placeholder="Подпись (напр. Студии в сети)"
+                          className="w-full px-2 py-1 rounded border st-border st-surface"
+                        />
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              </div>
             </div>
           )}
 

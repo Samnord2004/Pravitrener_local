@@ -4,9 +4,9 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>ЭТАЛОН ПРАВИЛО · Студия</title>
-    <meta name="description" content="Многоролевая платформа управления сетью студий тренажёра ПравИло: расписание, запись клиентов, живая телеметрия датчиков BLE и ESP32, база упражнений, рассылки и PWA-приложение." />
+    <meta name="description" content="Многоролевая платформа управления сетью студий тренажёра ПравИло: расписание, запись клиентов, живая телеметрия датчиков и тензодатчиков конечностей, база упражнений, рассылки и Android-приложения." />
     <meta property="og:title" content="ЭТАЛОН ПРАВИЛО · Студия" />
-    <meta property="og:description" content="Платформа управления студиями ПравИло, телеметрия тренировок и клиентский PWA-кабинет." />
+    <meta property="og:description" content="Платформа управления студиями ПравИло, телеметрия тренировок и Android-приложения для администратора, тренера и клиента." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <meta name="theme-color" content="#0f172a" />
@@ -22,6 +22,31 @@
   </head>
   <body class="st-canvas antialiased dark:bg-slate-950 dark:text-slate-100">
     <div id="root"></div>
+    <script>
+      (function () {
+        try {
+          var app = new URLSearchParams(window.location.search).get('app');
+          if (app === 'admin' || app === 'trainer' || app === 'client') {
+            var map = {
+              admin: { title: 'ЭТАЛОН ПРАВИЛО — Администратор', manifest: '/manifest-admin.webmanifest', icon: '/android-admin-192.png' },
+              trainer: { title: 'ЭТАЛОН ПРАВИЛО — Тренер', manifest: '/manifest-trainer.webmanifest', icon: '/android-trainer-192.png' },
+              client: { title: 'ЭТАЛОН ПРАВИЛО — Клиент', manifest: '/manifest-client.webmanifest', icon: '/android-client-192.png' }
+            }[app];
+            document.title = map.title;
+            var ml = document.querySelector('link[rel="manifest"]');
+            if (ml) { ml.setAttribute('href', map.manifest); }
+            else {
+              var nl = document.createElement('link');
+              nl.rel = 'manifest';
+              nl.href = map.manifest;
+              document.head.appendChild(nl);
+            }
+            var iconEl = document.querySelector('link[rel="icon"]');
+            if (iconEl) iconEl.setAttribute('href', map.icon);
+          }
+        } catch (e) {}
+      })();
+    </script>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

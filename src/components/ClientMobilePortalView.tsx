@@ -20,12 +20,14 @@ import {
   Pencil,
   Mail,
   Sparkles,
+  Scale,
 } from 'lucide-react';
 import type {
   Booking,
   BrandAboutInfo,
   ClientProfile,
   ClientSubscription,
+  LegalAcceptanceRecord,
   MessengerMessage,
   MethodologyProgramBlock,
   NotificationLog,
@@ -58,6 +60,7 @@ import { PWAInstallButton } from './PWAInstallButton';
 import { MiScale2Breakdown } from './MiScale2Breakdown';
 import { PostureComparisonSection } from './PostureComparisonSection';
 import { BrandAboutSection, StudioSocialButtons } from './StudioSocialButtons';
+import { LegalAgreementsModal, LegalAgreementsPanel } from './LegalAgreementsModal';
 import {
   TrainerAvatar,
   TrainerProfileDetailModal,
@@ -84,6 +87,7 @@ interface ClientPortalProps {
   onReviewSaved?: (rev: RatingReview) => void;
   onCurrentUserUpdated?: (u: UserAccount) => void;
   onClientUpdated?: (c: ClientProfile) => void;
+  onLegalAccepted?: (res: { user: UserAccount; record: LegalAcceptanceRecord }) => void;
 }
 
 export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
@@ -105,8 +109,10 @@ export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
   onReviewSaved,
   onCurrentUserUpdated,
   onClientUpdated,
+  onLegalAccepted,
 }) => {
   const [tab, setTab] = useState<'home' | 'studios' | 'book' | 'progress' | 'about' | 'alerts'>('home');
+  const [showLegalModal, setShowLegalModal] = useState(false);
   const effectiveBrandAbout = brandAbout || DEFAULT_BRAND_ABOUT;
   const [selectedMethodologyBlockId, setSelectedMethodologyBlockId] = useState<string>('');
   const [chosenMethodologyNotice, setChosenMethodologyNotice] = useState<string>('');
@@ -410,6 +416,14 @@ export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
             <span>
               {pushStatus === 'granted' ? 'Push включены' : 'Включить Push-уведомления'}
             </span>
+          </button>
+          <button
+            type="button"
+            onClick={() => setShowLegalModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border text-xs font-medium cursor-pointer min-h-[40px]"
+          >
+            <Scale className="w-3.5 h-3.5 st-accent-text" />
+            <span>Соглашения</span>
           </button>
           <PWAInstallButton compact />
         </div>
@@ -739,6 +753,15 @@ export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
               </div>
             </div>
           )}
+
+          <div className="lg:col-span-12">
+            <LegalAgreementsPanel
+              currentUser={currentUser}
+              brandName={effectiveBrandAbout.brandName}
+              compact
+              onAccepted={onLegalAccepted}
+            />
+          </div>
         </div>
       )}
 
@@ -1321,7 +1344,7 @@ export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
                   </div>
                 </div>
                 <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800">
-                  <div className="text-xs text-slate-500">Давление (B05)</div>
+                  <div className="text-xs text-slate-500">Давление (тонометр)</div>
                   <div className="font-mono text-xl font-bold mt-1 tabular-nums">
                     {latestAnthro.bpSys}/{latestAnthro.bpDia}
                   </div>
@@ -1476,31 +1499,39 @@ export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
 
       {/* TAB: ABOUT NETWORK & METHODOLOGY */}
       {tab === 'about' && (
-        <BrandAboutSection
-          brandAbout={effectiveBrandAbout}
-          studios={visibleStudios}
-          initialMethodologyBlockId={selectedMethodologyBlockId}
-          onSelectStudioForBook={(id) => {
-            setStudioId(id);
-            setTab('book');
-          }}
-          onChooseMethodology={(block: MethodologyProgramBlock) => {
-            const targetCat = block.recommendedServiceCategory || 'all';
-            setServiceCatFilter(targetCat);
-            if (targetCat !== 'all') {
-              const matching = services
-                .filter((s) => s.active !== false && inferServiceCategory(s) === targetCat)
-                .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))[0];
-              if (matching) setServiceId(matching.id);
-            }
-            setChosenMethodologyNotice(
-              `Выбрана программа «${block.title}»${
-                block.recommendedServiceHint ? ` (${block.recommendedServiceHint})` : ''
-              }.`
-            );
-            setTab('book');
-          }}
-        />
+        <div className="space-y-5">
+          <BrandAboutSection
+            brandAbout={effectiveBrandAbout}
+            studios={visibleStudios}
+            initialMethodologyBlockId={selectedMethodologyBlockId}
+            onSelectStudioForBook={(id) => {
+              setStudioId(id);
+              setTab('book');
+            }}
+            onChooseMethodology={(block: MethodologyProgramBlock) => {
+              const targetCat = block.recommendedServiceCategory || 'all';
+              setServiceCatFilter(targetCat);
+              if (targetCat !== 'all') {
+                const matching = services
+                  .filter((s) => s.active !== false && inferServiceCategory(s) === targetCat)
+                  .sort((a, b) => (a.sortOrder ?? 999) - (b.sortOrder ?? 999))[0];
+                if (matching) setServiceId(matching.id);
+              }
+              setChosenMethodologyNotice(
+                `Выбрана программа «${block.title}»${
+                  block.recommendedServiceHint ? ` (${block.recommendedServiceHint})` : ''
+                }.`
+              );
+              setTab('book');
+            }}
+          />
+          <LegalAgreementsPanel
+            currentUser={currentUser}
+            brandName={effectiveBrandAbout.brandName}
+            compact
+            onAccepted={onLegalAccepted}
+          />
+        </div>
       )}
 
       {/* Mobile Bottom Thumb-Zone Navigation */}
@@ -1862,6 +1893,17 @@ export const ClientMobilePortalView: React.FC<ClientPortalProps> = ({
           }}
           onRateTrainer={() => openRatingModal('trainer', detailTrainer.id, detailTrainer.name)}
           onClose={() => setDetailTrainer(null)}
+        />
+      )}
+
+      {showLegalModal && (
+        <LegalAgreementsModal
+          role={currentUser.role}
+          currentUser={currentUser}
+          mandatoryMode={false}
+          brandName={effectiveBrandAbout.brandName}
+          onAccepted={onLegalAccepted}
+          onClose={() => setShowLegalModal(false)}
         />
       )}
     </div>

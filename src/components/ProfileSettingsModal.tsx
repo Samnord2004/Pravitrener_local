@@ -22,10 +22,13 @@ import {
   UserCog,
   Pencil,
   BellRing,
+  Smartphone,
 } from 'lucide-react';
 import type {
+  BrandAboutInfo,
   ClientProfile,
   EmploymentStatus,
+  LegalAcceptanceRecord,
   Studio,
   StudioStyleTheme,
   SystemSecuritySettings,
@@ -34,9 +37,13 @@ import type {
   UserRole,
 } from '../types';
 import { apiRequest, getAuthToken, setAuthToken } from '../utils/api';
+import { DEFAULT_BRAND_ABOUT } from '../utils/brandAbout';
 import { BACKGROUND_PRESETS, STYLE_THEME_OPTIONS } from '../utils/themes';
 import { PWAInstallButton } from './PWAInstallButton';
 import { TrainerProfileEditorForm } from './TrainerProfileCard';
+import { BrandAboutEditorModal } from './BrandAboutEditorModal';
+import { AndroidAppsModal } from './AndroidAppsModal';
+import { LegalAgreementsPanel } from './LegalAgreementsModal';
 import {
   getNotificationPermissionState,
   isStaffRole,
@@ -50,6 +57,7 @@ interface ProfileSettingsModalProps {
   users: UserAccount[];
   studios: Studio[];
   clientProfile?: ClientProfile;
+  brandAbout?: BrandAboutInfo;
   theme: 'light' | 'dark';
   styleTheme: StudioStyleTheme;
   bgImage: string;
@@ -60,9 +68,11 @@ interface ProfileSettingsModalProps {
   onChangeBgOpacity: (opacity: number) => void;
   onCurrentUserUpdated: (u: UserAccount) => void;
   onClientUpdated?: (c: ClientProfile) => void;
+  onBrandAboutUpdated?: (b: BrandAboutInfo) => void;
   onUserCreated: (u: UserAccount) => void;
   onUserUpdated: (u: UserAccount) => void;
   onPushPermissionChange?: (perm: StaffPushPermissionState) => void;
+  onLegalAccepted?: (res: { user: UserAccount; record: LegalAcceptanceRecord }) => void;
   onClose: () => void;
 }
 
@@ -97,6 +107,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   users,
   studios,
   clientProfile,
+  brandAbout,
   theme,
   styleTheme,
   bgImage,
@@ -107,9 +118,11 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   onChangeBgOpacity,
   onCurrentUserUpdated,
   onClientUpdated,
+  onBrandAboutUpdated,
   onUserCreated,
   onUserUpdated,
   onPushPermissionChange,
+  onLegalAccepted,
   onClose,
 }) => {
   const isOwnerOrAdmin = currentUser.role === 'owner' || currentUser.role === 'admin';
@@ -119,8 +132,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     getNotificationPermissionState()
   );
   const [pushTestMsg, setPushTestMsg] = useState('');
+  const [showAndroidHub, setShowAndroidHub] = useState(false);
 
   const [tab, setTab] = useState<'profile' | 'staff' | 'system'>('profile');
+  const [showBrandingEditor, setShowBrandingEditor] = useState(false);
   const [bgUrlInput, setBgUrlInput] = useState(() =>
     bgImage && !bgImage.startsWith('data:') ? bgImage : ''
   );
@@ -615,10 +630,20 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                   tab === 'system' ? 'st-surface shadow-sm font-semibold' : 'st-muted'
                 }`}
               >
-                Обновления, Десктоп и Домен
+                Обновления, Android, ПК и Домен
               </button>
             )}
           </div>
+          {isOwnerOrAdmin && (
+            <button
+              type="button"
+              onClick={() => setShowAndroidHub(true)}
+              className="mt-2 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface-muted text-xs font-medium hover:opacity-90 cursor-pointer"
+            >
+              <Smartphone className="w-3.5 h-3.5 st-accent-text" />
+              <span>Приложения для Android (Админ / Тренер / Клиент)</span>
+            </button>
+          )}
         </div>
 
         {/* Scrollable Content Body */}
@@ -1102,6 +1127,36 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
                 {bgMsg && <div className="text-[11px] st-accent-text">{bgMsg}</div>}
               </div>
+
+              {isOwner && (
+                <div className="pt-3 border-t st-border flex flex-wrap items-center justify-between gap-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="h-10 rounded-lg bg-white border st-border px-2.5 py-1 flex items-center shrink-0">
+                      <img
+                        src={brandAbout?.logoUrl || DEFAULT_BRAND_ABOUT.logoUrl}
+                        alt={brandAbout?.brandName || 'Логотип'}
+                        className="h-full w-auto max-w-[120px] object-contain"
+                      />
+                    </div>
+                    <div className="min-w-0">
+                      <div className="text-xs font-semibold">
+                        Логотип и тексты главной страницы
+                      </div>
+                      <div className="text-[11px] st-muted truncate">
+                        {brandAbout?.homeTitle || DEFAULT_BRAND_ABOUT.homeTitle}
+                      </div>
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowBrandingEditor(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer shrink-0"
+                  >
+                    <Pencil className="w-3.5 h-3.5" />
+                    <span>Изменить логотип и тексты</span>
+                  </button>
+                </div>
+              )}
             </div>
 
             {/* Own E-mail Verification */}
@@ -1202,6 +1257,13 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               </div>
               {pwdMessage && <div className="text-xs st-accent-text">{pwdMessage}</div>}
             </form>
+
+            <LegalAgreementsPanel
+              currentUser={currentUser}
+              brandName={brandAbout?.brandName}
+              compact
+              onAccepted={onLegalAccepted}
+            />
           </div>
         )}
 
@@ -1677,15 +1739,56 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               </div>
             </form>
 
-            {/* Desktop Client Launch & Domain Tunnel Kit */}
-            <div className="p-4 rounded-xl st-surface-muted border st-border space-y-2.5 text-xs">
-              <div className="flex items-center gap-2 font-semibold text-sm">
-                <Monitor className="w-4 h-4 st-accent-text" />
-                <span>Десктопная версия (Electron) и шаблоны туннеля</span>
+            {/* Android Apps Card (Admin / Trainer / Client) */}
+            <div className="p-4 rounded-xl st-surface-muted border st-border space-y-3 text-xs">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-semibold text-sm">
+                  <Smartphone className="w-4 h-4 st-accent-text" />
+                  <span>Мобильные приложения для Android (Администратор, Тренер, Клиент)</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setShowAndroidHub(true)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium cursor-pointer"
+                >
+                  <Smartphone className="w-3.5 h-3.5" />
+                  <span>Открыть 3 Android-приложения</span>
+                </button>
               </div>
               <p className="st-muted leading-relaxed">
-                В проекте подготовлены готовые файлы для десктопа (Windows/macOS/Linux с поддержкой Web Bluetooth для Mi Scale 2, ESP32 и MYOblue) и шаблоны доменного туннелирования через <span className="font-mono">Cloudflare Tunnel</span>, <span className="font-mono">Caddy</span> и <span className="font-mono">Nginx</span> на порт 3000.
+                Для каждой роли доступны отдельный запуск с индивидуальным манифестом и иконкой на экране Android (<span className="font-mono">/?app=admin</span>, <span className="font-mono">/?app=trainer</span>, <span className="font-mono">/?app=client</span>), а также скрипт подготовки нативных пакетов <span className="font-mono">.apk / .aab</span> (<span className="font-mono">npm run android:prepare</span>).
               </p>
+            </div>
+
+            {/* Desktop Client Launch & Installer Kit (Mac Apple Silicon M1+ & Windows .exe) */}
+            <div className="p-4 rounded-xl st-surface-muted border st-border space-y-3 text-xs">
+              <div className="flex items-center gap-2 font-semibold text-sm">
+                <Monitor className="w-4 h-4 st-accent-text" />
+                <span>Установщики для ПК: macOS (M1+ Apple Silicon .dmg) и Windows (.exe)</span>
+              </div>
+              <p className="st-muted leading-relaxed">
+                Сборка включает встроенный автономный сервер, поддержку Web Bluetooth (весов, тензодатчиков конечностей, пульсометра, миодатчиков и тонометра) и автоматическое хранение базы в локальной папке пользователя без необходимости установки Node.js на компьютер студии.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                <div className="p-2.5 rounded-lg st-surface border st-border space-y-1">
+                  <div className="font-semibold">macOS (Apple M1 / M2 / M3 / M4)</div>
+                  <div className="font-mono text-[11px] st-accent-text">
+                    npm run desktop:mac
+                  </div>
+                  <div className="text-[11px] st-muted">
+                    Собирает <span className="font-mono">.dmg</span> и <span className="font-mono">.zip</span> под архитектуру <span className="font-mono">arm64</span> в <span className="font-mono">release-desktop/</span>.
+                  </div>
+                </div>
+                <div className="p-2.5 rounded-lg st-surface border st-border space-y-1">
+                  <div className="font-semibold">Windows 10 / 11 (x64 .exe)</div>
+                  <div className="font-mono text-[11px] st-accent-text">
+                    npm run desktop:win
+                  </div>
+                  <div className="text-[11px] st-muted">
+                    Собирает мастер установки <span className="font-mono">.exe</span> (NSIS) и портативный <span className="font-mono">.exe</span> в <span className="font-mono">release-desktop/</span>.
+                  </div>
+                </div>
+              </div>
               <div className="flex items-center justify-between gap-2 p-2.5 rounded-lg st-surface border st-border font-mono text-[11px] overflow-x-auto">
                 <span className="truncate">{desktopLaunchCmd}</span>
                 <button
@@ -1717,6 +1820,23 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           </button>
         </div>
       </div>
+
+      {showBrandingEditor && isOwner && (
+        <BrandAboutEditorModal
+          initialBrandAbout={brandAbout || DEFAULT_BRAND_ABOUT}
+          initialTab="branding"
+          onSaved={(updated) => onBrandAboutUpdated?.(updated)}
+          onClose={() => setShowBrandingEditor(false)}
+        />
+      )}
+
+      {showAndroidHub && (
+        <AndroidAppsModal
+          brandName={brandAbout?.brandName}
+          showApkInstructions={isOwner}
+          onClose={() => setShowAndroidHub(false)}
+        />
+      )}
     </div>
   );
 };

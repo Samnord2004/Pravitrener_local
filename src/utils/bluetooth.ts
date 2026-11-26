@@ -24,10 +24,10 @@ export function formatHardwareError(err: unknown, contextLabel: string, type?: E
   const lower = raw.toLowerCase();
   if (lower.includes('cancel') || lower.includes('user cancelled')) {
     if (type === 'wahoo_tickr') {
-      return `${contextLabel}: поиск Wahoo TICKR FIT отменён. Если браслет не появился в списке: 1) нажмите боковую кнопку (должен мигать синий LED), 2) закройте Wahoo App/часы на телефоне (занятый BLE-канал скрывает датчик), 3) нажмите «Все BLE».`;
+      return `${contextLabel}: поиск пульсометра отменён. Если пульсометр не появился в списке: 1) нажмите кнопку включения на браслете (должен мигать индикатор), 2) закройте фитнес-приложения или часы на телефоне (занятый BLE-канал скрывает датчик), 3) нажмите «Все BLE».`;
     }
     if (type === 'bp_b05') {
-      return `${contextLabel}: поиск тонометра (YK-IBPA1 / B05) отменён. На YK-IBPA1 включите Bluetooth на манжете (удерживайте MEM или запустите START до значка BLE), в списке он обычно называется «BleModule» / «BleModuleB» / «YK-IBPA1». Если не виден — нажмите «Все BLE».`;
+      return `${contextLabel}: поиск тонометра отменён. Включите Bluetooth на манжете (удерживайте MEM или нажмите START до значка BLE). Если прибор не виден — нажмите «Все BLE».`;
     }
     return `${contextLabel}: выбор устройства отменён пользователем.`;
   }
@@ -35,14 +35,14 @@ export function formatHardwareError(err: unknown, contextLabel: string, type?: E
     return `${contextLabel}: Web Bluetooth заблокирован политикой iframe. Откройте приложение напрямую в отдельной вкладке браузера (HTTPS) или используйте USB/Wi-Fi мост.`;
   }
   if (lower.includes('securityerror') || lower.includes('authentication') || lower.includes('insufficient')) {
-    return `${contextLabel}: ошибка сопряжения/доступа BLE (${raw}). Подтвердите системный запрос сопряжения Windows или удалите устройство из настроек Bluetooth ОС и подключите заново из приложения.`;
+    return `${contextLabel}: ошибка сопряжения/доступа BLE (${raw}). Подтвердите системный запрос сопряжения или удалите устройство из настроек Bluetooth ОС и подключите заново из приложения.`;
   }
   if (lower.includes('bluetooth adapter not available') || lower.includes('not found')) {
     if (type === 'wahoo_tickr') {
-      return `${contextLabel}: Wahoo TICKR FIT не найден или Bluetooth-адаптер выключен. Нажмите кнопку на браслете (синий LED), отключите его от телефона или используйте кнопку «Все BLE».`;
+      return `${contextLabel}: пульсометр не найден или Bluetooth-адаптер выключен. Нажмите кнопку на пульсометре, отключите его от телефона или используйте кнопку «Все BLE».`;
     }
     if (type === 'bp_b05') {
-      return `${contextLabel}: тонометр YK-IBPA1 / B05 не найден или спит. Нажмите START / удерживайте MEM (ищите «BleModule» / «BleModuleB»), закройте YonkerCare/YonkerHealth на телефоне или нажмите «Все BLE».`;
+      return `${contextLabel}: тонометр не найден или спит. Нажмите START / удерживайте MEM на манжете, закройте сторонние приложения тонометра на телефоне или нажмите «Все BLE».`;
     }
     return `${contextLabel}: устройство не найдено или Bluetooth-адаптер выключен.`;
   }
@@ -51,7 +51,7 @@ export function formatHardwareError(err: unknown, contextLabel: string, type?: E
   }
   if (lower.includes('gatt server is disconnected') || lower.includes('connection failed') || lower.includes('networkerror')) {
     if (type === 'wahoo_tickr') {
-      return `${contextLabel}: не удалось установить GATT-связь с Wahoo TICKR FIT (${raw}). Наденьте браслет на предплечье, нажмите боковую кнопку и повторите подключение.`;
+      return `${contextLabel}: не удалось установить GATT-связь с пульсометром (${raw}). Наденьте пульсометр на предплечье, нажмите кнопку и повторите подключение.`;
     }
     if (type === 'bp_b05') {
       return `${contextLabel}: тонометр разорвал BLE-связь (${raw}). Нажмите START / MEM на манжете, чтобы разбудить Bluetooth, и повторите попытку.`;
@@ -640,7 +640,7 @@ async function subscribeBloodPressureCharacteristics(
       : '';
 
   throw new Error(
-    `На выбранном BLE-устройстве не найден профиль тонометра (0x1810 / FFF0 / FFE0 / AE00).${foundText} Убедитесь, что выбран именно тонометр YK-IBPA1 (BleModule) / B05 и он активен (кнопка START / MEM).`
+    `На выбранном BLE-устройстве не найден профиль тонометра (0x1810 / FFF0 / FFE0 / AE00).${foundText} Убедитесь, что выбран именно тонометр и он активен (кнопка START / MEM).`
   );
 }
 
@@ -759,7 +759,7 @@ async function resolveUartNotifyAndWriteChars(server: GattServerLike): Promise<{
       // try next GATT profile
     }
   }
-  throw new Error('На устройстве не найден совместимый GATT-сервис (ESP32 4fafc201 / Nordic UART / FFE0 / FFF0).');
+  throw new Error('На устройстве не найден совместимый GATT-сервис датчиков (4fafc201 / Nordic UART / FFE0 / FFF0).');
 }
 
 function buildNamePrefixFilters(rawFilter: string): { namePrefix: string }[] {
@@ -887,7 +887,7 @@ export async function connectRealBleDeviceStream(params: {
       } catch {
         const svcHint = discoveredServices.length > 0 ? ` Сервисы: [${discoveredServices.join(', ')}].` : '';
         throw new Error(
-          `На выбранном BLE-устройстве не найден профиль пульса Heart Rate (0x180D).${svcHint} Выберите именно браслет Wahoo TICKR FIT и активируйте его кнопкой.`
+          `На выбранном BLE-устройстве не найден профиль пульса Heart Rate (0x180D).${svcHint} Выберите именно пульсометр и активируйте его кнопкой.`
         );
       }
       const hrChar = await svc.getCharacteristic(0x2a37);
@@ -1321,7 +1321,7 @@ export async function connectEsp32WebSerial(params: {
     await port.open({ baudRate });
     const info = port.getInfo?.();
     const label = info?.usbVendorId
-      ? `USB ESP32 (${info.usbVendorId.toString(16)}:${(info.usbProductId || 0).toString(16)})`
+      ? `USB Тензодатчики (${info.usbVendorId.toString(16)}:${(info.usbProductId || 0).toString(16)})`
       : `USB Serial (${baudRate} baud)`;
 
     let active = true;
@@ -1566,14 +1566,14 @@ export async function measureBloodPressureBle(opts?: {
     return {
       success: false,
       mode: 'web_bluetooth',
-      deviceName: 'Тонометр B05 BLE',
+      deviceName: 'Тонометр BLE',
       sys: 0,
       dia: 0,
       map: 0,
       pulse: 0,
       measuredAt: nowTime,
       message: caps.inIframe
-        ? 'Web Bluetooth заблокирован внутри iframe. Откройте приложение в отдельной вкладке по HTTPS для прямого подключения тонометра B05.'
+        ? 'Web Bluetooth заблокирован внутри iframe. Откройте приложение в отдельной вкладке по HTTPS для прямого подключения тонометра.'
         : 'Web Bluetooth API недоступен в текущем браузере (требуется Chrome/Edge/Android Chrome по HTTPS).',
     };
   }
@@ -1592,7 +1592,7 @@ export async function measureBloodPressureBle(opts?: {
       return {
         success: false,
         mode: 'web_bluetooth',
-        deviceName: selectedDevice?.name || 'Тонометр B05 BLE',
+        deviceName: selectedDevice?.name || 'Тонометр BLE',
         sys: 0,
         dia: 0,
         map: 0,
@@ -1605,7 +1605,7 @@ export async function measureBloodPressureBle(opts?: {
     const server = await connectGattWithRetry(selectedDevice, 3);
     const discoveredServices = await inspectDiscoveredServices(server);
     const batteryPct = await tryReadBatteryLevel(server);
-    const deviceName = selectedDevice.name || 'Тонометр B05 BLE';
+    const deviceName = selectedDevice.name || 'Тонометр BLE';
     let lastRawDebug = '';
 
     const reading = await new Promise<{ sys: number; dia: number; map: number; pulse?: number }>(
@@ -1681,12 +1681,12 @@ export async function measureBloodPressureBle(opts?: {
       message: `Считано с тонометра ${deviceName}: ${reading.sys}/${reading.dia} мм рт. ст.${pulse ? `, пульс ${pulse} уд/мин` : ''}.`,
     };
   } catch (err) {
-    const msg = formatHardwareError(err, 'Тонометр B05', 'bp_b05');
+    const msg = formatHardwareError(err, 'Тонометр', 'bp_b05');
     return {
       success: false,
       cancelled: msg.includes('отменён'),
       mode: 'web_bluetooth',
-      deviceName: 'Тонометр B05 BLE',
+      deviceName: 'Тонометр BLE',
       sys: 0,
       dia: 0,
       map: 0,

@@ -1,0 +1,26 @@
+{
+  "packageId": "ru.etalonpravilo.trainer",
+  "host": "studio.yourdomain.ru",
+  "name": "ЭТАЛОН ПРАВИЛО — Тренер",
+  "launcherName": "Тренер",
+  "display": "standalone",
+  "themeColor": "#0f172a",
+  "navigationColor": "#0f172a",
+  "backgroundColor": "#f8fafc",
+  "enableNotifications": true,
+  "startUrl": "/?app=trainer",
+  "iconUrl": "https://studio.yourdomain.ru/android-trainer-512.png",
+  "maskableIconUrl": "https://studio.yourdomain.ru/android-trainer-maskable-512.png",
+  "webManifestUrl": "https://studio.yourdomain.ru/manifest-trainer.webmanifest",
+  "appVersionName": "1.2.0",
+  "appVersionCode": 120,
+  "shortcuts": [],
+  "fallbackType": "customtabs",
+  "features": {},
+  "alphaDependencies": {
+    "enabled": false
+  },
+  "enableSiteSettingsShortcut": true,
+  "isChromeOSOnly": false,
+  "orientation": "default"
+}

@@ -473,7 +473,7 @@ export async function tareEsp32Hardware(params: {
     snapshot.esp32 = { ...snapshot.esp32, ...cal };
     notifyListeners();
   }
-  return `Тензодатчики ESP32 обнулены по текущему сигналу (смещения: ЛР ${zeroOffsets.lh}, ПР ${zeroOffsets.rh}, ЛН ${zeroOffsets.lf}, ПН ${zeroOffsets.rf}).`;
+  return `Тензодатчики конечностей обнулены по текущему сигналу (смещения: ЛР ${zeroOffsets.lh}, ПР ${zeroOffsets.rh}, ЛН ${zeroOffsets.lf}, ПН ${zeroOffsets.rf}).`;
 }
 
 export function getLiveSensorsSnapshot(): LiveSensorsSnapshot {

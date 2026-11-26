@@ -13,6 +13,7 @@ import {
   Stethoscope,
   ClipboardCheck,
   Sparkles,
+  Compass,
 } from 'lucide-react';
 import type {
   MmtMuscleRecommendation,
@@ -24,12 +25,17 @@ import type {
   PostureViewProjection,
 } from '../types';
 import {
+  DEFAULT_GRID_DENSITY,
   DEFAULT_LASER_HORIZONS,
   LASER_HORIZON_NAMES,
+  MAX_GRID_DENSITY,
+  MIN_GRID_DENSITY,
   POSTURE_MEASUREMENT_PRESETS,
   buildBeforeAfterComparison,
   computeMeasurementAngle,
   computeMeasurementDirection,
+  formatGridStepLabel,
+  normalizeGridDensity,
   normalizeLaserHorizons,
 } from '../utils/postureGeometry';
 import {
@@ -107,6 +113,9 @@ export const PostureLaserAnalyzerModal: React.FC<PostureLaserAnalyzerModalProps>
     initialRecord?.laserTiltDeg ?? 0
   );
   const [fineGrid, setFineGrid] = useState(Boolean(initialRecord?.fineGrid));
+  const [gridDensity, setGridDensity] = useState<number>(() =>
+    normalizeGridDensity(initialRecord?.gridDensity)
+  );
 
   const [beforeMeasurements, setBeforeMeasurements] = useState<
     PostureAngleMeasurement[]
@@ -542,6 +551,7 @@ export const PostureLaserAnalyzerModal: React.FC<PostureLaserAnalyzerModalProps>
         laserHorizonsPct,
         laserTiltDeg,
         fineGrid,
+        gridDensity,
         beforeMeasurements,
         afterMeasurements,
         kinesiologyReport: liveKinesiologyReport,
@@ -848,6 +858,7 @@ export const PostureLaserAnalyzerModal: React.FC<PostureLaserAnalyzerModalProps>
                     laserHorizonsPct={laserHorizonsPct}
                     laserTiltDeg={laserTiltDeg}
                     fineGrid={fineGrid}
+                    gridDensity={gridDensity}
                     measurements={activeMeasurements}
                     pendingPoints={pendingPoints}
                     pendingColor={selectedPreset.color}
@@ -909,7 +920,7 @@ export const PostureLaserAnalyzerModal: React.FC<PostureLaserAnalyzerModalProps>
                       }`}
                     >
                       <Grid className="w-3 h-3" />
-                      <span>Сетка 5%</span>
+                      <span>Сетка {formatGridStepLabel(gridDensity)}</span>
                     </button>
                     <button
                       type="button"
@@ -922,6 +933,50 @@ export const PostureLaserAnalyzerModal: React.FC<PostureLaserAnalyzerModalProps>
                     >
                       {laserEnabled ? 'Уровни ВКЛ' : 'Уровни ВЫКЛ'}
                     </button>
+                  </div>
+                </div>
+
+                {/* Grid Density Slider */}
+                <div className="p-2.5 rounded-lg bg-white/80 dark:bg-slate-900/70 border border-slate-200 dark:border-slate-700/80 space-y-1 text-xs">
+                  <div className="flex items-center justify-between gap-2 text-[11px]">
+                    <span className="inline-flex items-center gap-1.5 font-medium text-slate-700 dark:text-slate-200">
+                      <Grid className="w-3.5 h-3.5 text-cyan-600 dark:text-cyan-400" />
+                      <span>Плотность сетки</span>
+                    </span>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-semibold text-cyan-700 dark:text-cyan-300">
+                        {fineGrid
+                          ? `шаг ${formatGridStepLabel(gridDensity)} · ${gridDensity}×${gridDensity}`
+                          : `выкл (шаг ${formatGridStepLabel(gridDensity)})`}
+                      </span>
+                      {gridDensity !== DEFAULT_GRID_DENSITY && (
+                        <button
+                          type="button"
+                          onClick={() => setGridDensity(DEFAULT_GRID_DENSITY)}
+                          className="text-[10px] text-cyan-700 dark:text-cyan-400 hover:underline cursor-pointer"
+                        >
+                          Сброс 5%
+                        </button>
+                      )}
+                    </div>
+                  </div>
+                  <input
+                    type="range"
+                    min={MIN_GRID_DENSITY}
+                    max={MAX_GRID_DENSITY}
+                    step={1}
+                    aria-label="Плотность сетки"
+                    value={gridDensity}
+                    onChange={(e) => {
+                      setGridDensity(Number(e.target.value));
+                      if (!fineGrid) setFineGrid(true);
+                    }}
+                    className="w-full accent-cyan-600 cursor-pointer"
+                  />
+                  <div className="flex justify-between text-[10px] text-slate-400">
+                    <span>Редкая (25%)</span>
+                    <span>Стандарт (5%)</span>
+                    <span>Частая (2%)</span>
                   </div>
                 </div>
 
@@ -1020,12 +1075,88 @@ export const PostureLaserAnalyzerModal: React.FC<PostureLaserAnalyzerModalProps>
                 )}
               </div>
 
-              {/* Angle Measurement Selector by Body Region */}
+              {/* Angle Measurement Selector by Body Region + 3-Point Goniometer Tool */}
               <div className="p-4 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 space-y-3 text-xs">
-                <div className="flex items-center gap-2 font-bold">
-                  <Crosshair className="w-4 h-4 text-cyan-600" />
-                  <span>Линии отклонения по зонам тела</span>
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex items-center gap-2 font-bold">
+                    <Crosshair className="w-4 h-4 text-cyan-600" />
+                    <span>Инструменты замера на фото</span>
+                  </div>
+                  <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-100 dark:bg-slate-800 text-[11px]">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedPreset.type === 'joint') {
+                          const firstTilt = visiblePresets.find((p) => p.type === 'tilt') || POSTURE_MEASUREMENT_PRESETS[0];
+                          setSelectedPresetId(firstTilt.id);
+                          setPendingPoints([]);
+                        }
+                      }}
+                      className={`px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${
+                        selectedPreset.type === 'tilt'
+                          ? 'bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm'
+                          : 'text-slate-500 hover:text-slate-700 dark:hover:text-slate-200'
+                      }`}
+                    >
+                      Линии (2 т.)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (selectedPreset.type !== 'joint') {
+                          setSelectedPresetId('goniometer_arm');
+                          setPendingPoints([]);
+                        }
+                      }}
+                      className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-md font-semibold cursor-pointer transition-colors ${
+                        selectedPreset.type === 'joint'
+                          ? 'bg-amber-500 text-white shadow-sm'
+                          : 'text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white'
+                      }`}
+                    >
+                      <Compass className="w-3 h-3" />
+                      <span>Гониометр (3 т.)</span>
+                    </button>
+                  </div>
                 </div>
+
+                {selectedPreset.type === 'joint' && (
+                  <div className="p-2.5 rounded-lg bg-amber-50/80 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/70 space-y-2">
+                    <div className="flex items-center justify-between gap-2 text-[11px] font-semibold text-amber-900 dark:text-amber-200">
+                      <span className="inline-flex items-center gap-1.5">
+                        <Compass className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                        <span>Режим «Гониометр» (3 точки: P1 → P2 вершина → P3)</span>
+                      </span>
+                      <span className="font-mono text-[10px] text-amber-700 dark:text-amber-300">
+                        Угол + откл. от 180°
+                      </span>
+                    </div>
+                    <div className="flex flex-wrap gap-1.5">
+                      {[
+                        { id: 'goniometer_arm', label: 'Плечо – локоть – запястье' },
+                        { id: 'legs_valgus', label: 'Бедро – колено – стопа' },
+                        { id: 'cervical_fhp', label: 'Ухо – C7 – плечо' },
+                        { id: 'custom_joint', label: 'Свободный (3 т.)' },
+                      ].map((gp) => (
+                        <button
+                          key={gp.id}
+                          type="button"
+                          onClick={() => {
+                            setSelectedPresetId(gp.id);
+                            setPendingPoints([]);
+                          }}
+                          className={`px-2 py-1 rounded-md text-[11px] font-medium border cursor-pointer transition-colors ${
+                            selectedPresetId === gp.id
+                              ? 'bg-amber-600 text-white border-transparent'
+                              : 'bg-white dark:bg-slate-900 border-amber-200 dark:border-amber-800 text-amber-900 dark:text-amber-200 hover:bg-amber-100/70'
+                          }`}
+                        >
+                          {gp.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Region Tabs */}
                 <div className="flex flex-wrap gap-1">

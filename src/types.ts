@@ -37,6 +37,35 @@ export interface UserAccount {
   avatarInitials: string;
   active: boolean;
   trainerProfile?: TrainerPublicProfile;
+  legalAcceptedAt?: string;
+  legalAgreementsVersion?: string;
+}
+
+export interface LegalAgreementAcceptanceItem {
+  agreementId: string;
+  title: string;
+  version: string;
+  acceptedAt: string;
+}
+
+export interface LegalAcceptanceRecord {
+  id: string;
+  userId: string;
+  userName: string;
+  userLogin: string;
+  userRole: UserRole;
+  studioId: string | null;
+  studioName?: string;
+  appFlavor?: 'admin' | 'trainer' | 'client' | 'web';
+  agreementsVersion: string;
+  acceptedItems: LegalAgreementAcceptanceItem[];
+  acceptedAt: string;
+  readConfirmedAt: string;
+  userAgent?: string;
+  ownerNotifiedAt?: string;
+  ownerNotificationStatus?: 'sent' | 'logged' | 'read_by_owner';
+  ownerEmailDispatched?: boolean;
+  ownerReadAt?: string;
 }
 
 export interface StoredUserAccount extends UserAccount {
@@ -87,6 +116,13 @@ export interface MethodologyProgramBlock {
 export interface BrandAboutInfo {
   brandName: string;
   tagline: string;
+  logoUrl?: string;
+  logoIconUrl?: string;
+  homeBadge?: string;
+  homeTitle?: string;
+  homeSubtitle?: string;
+  homeHeroImageUrl?: string;
+  homeHighlights?: Array<{ value: string; label: string }>;
   aboutNetwork: string;
   methodologyTitle: string;
   methodologyDescription: string;
@@ -389,6 +425,7 @@ export interface PostureAssessmentRecord {
   laserHorizonsPct: number[];
   laserTiltDeg?: number;
   fineGrid?: boolean;
+  gridDensity?: number;
   beforeMeasurements: PostureAngleMeasurement[];
   afterMeasurements: PostureAngleMeasurement[];
   kinesiologyReport?: PostureKinesiologyReport;
@@ -750,4 +787,5 @@ export interface StudioDatabase {
   brandAbout?: BrandAboutInfo;
   systemSettings?: SystemSecuritySettings;
   hardwareRealModeInitialized?: boolean;
+  legalAcceptances?: LegalAcceptanceRecord[];
 }

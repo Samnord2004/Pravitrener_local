@@ -246,7 +246,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
         },
         onProgress: (progressMsg) => {
           setStatusKind('info');
-          setStatusMessage(`Тонометр B05: ${progressMsg}`);
+          setStatusMessage(`Тонометр: ${progressMsg}`);
           const now = Date.now();
           if (b05 && now - lastProgressPatchAt > 900) {
             lastProgressPatchAt = now;
@@ -368,7 +368,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
             ? `Mi Scale 2 (${realScaleMetrics.weightKg} кг, BIA ${realScaleMetrics.impedanceOhm} Ω)`
             : ''
         }${realScaleMetrics && liveSensors.bp.sys ? ' + ' : ''}${
-          liveSensors.bp.sys ? `Тонометр B05 (${sys}/${dia})` : ''
+          liveSensors.bp.sys ? `Тонометр (${sys}/${dia})` : ''
         }`,
       });
 
@@ -524,7 +524,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                   : 'border-slate-300 dark:border-slate-700 st-muted'
               }`}
             >
-              USB Serial (ESP32): {caps.webSerial ? 'Готов' : 'Нет'}
+              USB Serial (Тензодатчики): {caps.webSerial ? 'Готов' : 'Нет'}
             </span>
             <button
               type="button"
@@ -532,7 +532,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
               className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md border st-border st-surface-muted hover:opacity-90 cursor-pointer"
             >
               <Server className="w-3.5 h-3.5 st-accent-text" />
-              <span>Шлюз ESP32 / BLE Bridge</span>
+              <span>Шлюз тензодатчиков / BLE Bridge</span>
             </button>
           </div>
         </div>
@@ -561,7 +561,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
           <div className="p-3.5 rounded-lg st-surface-muted border st-border text-xs space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-semibold">
-                Приём реальных данных от Wi-Fi ESP32 или локального BLE-агента (HTTP → WebSocket)
+                Приём реальных данных от Wi-Fi тензодатчиков конечностей или локального BLE-агента (HTTP → WebSocket)
               </span>
               {bridgeInfo && (
                 <button
@@ -581,11 +581,11 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
             <div className="font-mono text-[11px] p-2.5 rounded bg-slate-950 text-cyan-300 overflow-x-auto">
               POST {fullBridgeUrl} · Header: x-hardware-key: {bridgeInfo?.bridgeKey || 'etalon-studio-bridge'}
               <br />
-              ESP32: {`{"type":"esp32_limbs","lh":18.4,"rh":18.1,"lf":17.9,"rf":18.0,"batteryPct":92}`}
+              Тензодатчики конечностей: {`{"type":"esp32_limbs","lh":18.4,"rh":18.1,"lf":17.9,"rf":18.0,"batteryPct":92}`}
               <br />
-              MYOblue: {`{"type":"myoblue_emg","emgCh1Mv":0.44,"emgCh2Mv":0.39}`} · Wahoo: {`{"type":"wahoo_tickr","heartRateBpm":94}`}
+              Миодатчики: {`{"type":"myoblue_emg","emgCh1Mv":0.44,"emgCh2Mv":0.39}`} · Пульсометр: {`{"type":"wahoo_tickr","heartRateBpm":94}`}
               <br />
-              Mi Scale 2 (Python bleak 0x181B): {`{"type":"xiaomi_scale","weightKg":78.4,"impedanceOhm":462,"stabilized":true}`} · B05 / YK-IBPA1: {`{"type":"bp_b05","sys":122,"dia":78,"pulse":68}`}
+              Весы (0x181B): {`{"type":"xiaomi_scale","weightKg":78.4,"impedanceOhm":462,"stabilized":true}`} · Тонометр: {`{"type":"bp_b05","sys":122,"dia":78,"pulse":68}`}
             </div>
           </div>
         )}
@@ -595,7 +595,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
       <div className="rounded-xl st-surface border st-border p-4 flex flex-col lg:flex-row lg:items-center justify-between gap-4">
         <div>
           <h3 className="font-display text-base font-semibold">
-            Синхронизация реального замера (Mi Scale 2 + Тонометр B05 → карта клиента)
+            Синхронизация реального замера (Весы + Тонометр → карта клиента)
           </h3>
           <p className="text-xs st-muted mt-0.5">
             {hasRealSyncData
@@ -606,7 +606,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                 }${realScaleMetrics && liveSensors.bp.sys ? ' · ' : ''}${
                   liveSensors.bp.sys ? `АД ${liveSensors.bp.sys}/${liveSensors.bp.dia}` : ''
                 }`
-              : 'Подключите весы Mi Scale 2 или снимите замер на тонометре B05 — реальные данные появятся здесь для записи в карту.'}
+              : 'Подключите весы или снимите замер на тонометре — реальные данные появятся здесь для записи в карту.'}
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
@@ -638,7 +638,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border st-surface-muted text-xs font-medium hover:opacity-90 cursor-pointer disabled:opacity-60"
           >
             {bpBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bluetooth className="w-3.5 h-3.5 st-accent-text" />}
-            <span>Замер B05 BLE</span>
+            <span>Замер тонометром BLE</span>
           </button>
           <button
             type="button"
@@ -773,7 +773,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                 {dev.type === 'wahoo_tickr' && (
                   <div className="p-3 rounded-lg st-surface-muted border st-border text-[11px] space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">Профиль поиска: 0x180D / TICKR / Wahoo</span>
+                      <span className="font-medium">Профиль поиска: пульсометр (0x180D)</span>
                       <button
                         type="button"
                         onClick={() => setShowWahooGuide((v) => !v)}
@@ -784,10 +784,10 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                     </div>
                     {showWahooGuide && (
                       <ol className="list-decimal pl-4 space-y-1 st-muted leading-relaxed">
-                        <li>Нажмите кнопку на браслете — индикатор должен мигать <b>синим</b> (режим поиска BLE).</li>
-                        <li>Наденьте браслет на предплечье — без контакта с кожей датчик засыпает или передаёт 0 уд/мин.</li>
-                        <li>Закройте Wahoo Fitness / Strava на телефоне и отключите браслет от часов — при занятых BLE-каналах он скрыт.</li>
-                        <li>Не спаривайте Wahoo в настройках Bluetooth ОС заранее — подключайте напрямую из этого окна или кнопкой <b>«Все BLE»</b>.</li>
+                        <li>Нажмите кнопку на пульсометре — индикатор должен мигать (режим поиска BLE).</li>
+                        <li>Наденьте датчик на предплечье — без контакта с кожей пульсометр засыпает или передаёт 0 уд/мин.</li>
+                        <li>Закройте сторонние фитнес-приложения на телефоне и отключите пульсометр от часов — при занятых BLE-каналах он скрыт.</li>
+                        <li>Не спаривайте пульсометр в настройках Bluetooth ОС заранее — подключайте напрямую из этого окна или кнопкой <b>«Все BLE»</b>.</li>
                       </ol>
                     )}
                   </div>
@@ -796,7 +796,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                 {dev.type === 'bp_b05' && (
                   <div className="p-3 rounded-lg st-surface-muted border st-border text-[11px] space-y-1.5">
                     <div className="flex items-center justify-between gap-2">
-                      <span className="font-medium">Профиль: 0x1810 / BleModule / YK-IBPA1 / B05</span>
+                      <span className="font-medium">Профиль поиска: тонометр (0x1810)</span>
                       <button
                         type="button"
                         onClick={() => setShowBpGuide((v) => !v)}
@@ -807,10 +807,10 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                     </div>
                     {showBpGuide && (
                       <ol className="list-decimal pl-4 space-y-1 st-muted leading-relaxed">
-                        <li>Нажмите кнопку <b>START</b> или удерживайте <b>MEM</b> 2–3 сек до появления значка Bluetooth на экране — <b>YK-IBPA1</b> обычно отображается как <b>BleModule</b>, <b>BleModuleB</b> или <b>YK-IBPA1</b>.</li>
+                        <li>Нажмите кнопку <b>START</b> или удерживайте <b>MEM</b> 2–3 сек до появления значка Bluetooth на экране тонометра.</li>
                         <li>Не спаривайте тонометр заранее в настройках Bluetooth ОС — подключайте напрямую из браузера.</li>
-                        <li>Закройте <b>YonkerCare / YonkerHealth</b> на телефоне, чтобы телефон не перехватывал BLE-канал.</li>
-                        <li>Если прибор не виден в обычном списке, нажмите <b>«Все BLE»</b> и при необходимости укажите префикс имени (напр. <code className="font-mono">BleModule</code>) в «Настройке».</li>
+                        <li>Закройте сторонние приложения тонометра на телефоне, чтобы телефон не перехватывал BLE-канал.</li>
+                        <li>Если прибор не виден в обычном списке, нажмите <b>«Все BLE»</b> и при необходимости укажите префикс имени в «Настройке».</li>
                       </ol>
                     )}
                   </div>
@@ -974,12 +974,12 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                     type="text"
                     placeholder={
                       configuringDevice.type === 'wahoo_tickr'
-                        ? 'Пусто или TICKR FIT'
+                        ? 'Пусто или имя пульсометра'
                         : configuringDevice.type === 'bp_b05'
-                        ? 'Пусто или BleModule / YK-IBPA1'
+                        ? 'Пусто или имя тонометра'
                         : configuringDevice.type === 'xiaomi_scale'
-                        ? 'Пусто или MIBFS'
-                        : 'Напр. PRAVILO-ESP32'
+                        ? 'Пусто или имя весов'
+                        : 'Напр. имя датчика'
                     }
                     value={cfgNameFilter}
                     onChange={(e) => setCfgNameFilter(e.target.value)}
@@ -987,12 +987,12 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                   />
                   {configuringDevice.type === 'wahoo_tickr' && (
                     <p className="mt-1 text-[11px] st-muted">
-                      Оставьте пустым для автопоиска по профилям 0x180D, TICKR и Wahoo.
+                      Оставьте пустым для автопоиска по профилю пульсометра (0x180D).
                     </p>
                   )}
                   {configuringDevice.type === 'bp_b05' && (
                     <p className="mt-1 text-[11px] st-muted">
-                      Оставьте пустым для автопоиска по 0x1810, BleModule, YK-IBPA1, B05, BPM и FFF0.
+                      Оставьте пустым для автопоиска по профилю тонометра (0x1810).
                     </p>
                   )}
                 </div>
@@ -1017,7 +1017,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                     >
                       <option value={9600}>9600</option>
                       <option value={57600}>57600</option>
-                      <option value={115200}>115200 (ESP32-S3)</option>
+                      <option value={115200}>115200 (Стандартный)</option>
                       <option value={921600}>921600</option>
                     </select>
                   </div>

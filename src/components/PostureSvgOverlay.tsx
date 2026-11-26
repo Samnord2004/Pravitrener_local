@@ -1,6 +1,11 @@
 import React from 'react';
 import type { PostureAngleMeasurement, PosturePoint } from '../types';
-import { LASER_HORIZON_NAMES, normalizeLaserHorizons } from '../utils/postureGeometry';
+import {
+  DEFAULT_GRID_DENSITY,
+  LASER_HORIZON_NAMES,
+  normalizeGridDensity,
+  normalizeLaserHorizons,
+} from '../utils/postureGeometry';
 
 interface PostureSvgOverlayProps {
   laserEnabled: boolean;
@@ -8,6 +13,7 @@ interface PostureSvgOverlayProps {
   laserHorizonsPct: number[];
   laserTiltDeg?: number;
   fineGrid?: boolean;
+  gridDensity?: number;
   measurements: PostureAngleMeasurement[];
   pendingPoints?: PosturePoint[];
   pendingColor?: string;
@@ -51,6 +57,7 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
   laserHorizonsPct,
   laserTiltDeg = 0,
   fineGrid = false,
+  gridDensity = DEFAULT_GRID_DENSITY,
   measurements,
   pendingPoints = [],
   pendingColor = '#22d3ee',
@@ -64,6 +71,8 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
   const safePlumbX = Math.max(5, Math.min(95, laserPlumbXPct || 50));
   const tilt = Number.isFinite(laserTiltDeg) ? laserTiltDeg : 0;
   const horizons = normalizeLaserHorizons(laserHorizonsPct);
+  const safeGridDensity = normalizeGridDensity(gridDensity);
+  const gridStepPct = 100 / safeGridDensity;
 
   return (
     <svg
@@ -81,31 +90,40 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
         </filter>
       </defs>
 
-      {/* Optional 5% Laser Calibration Grid */}
+      {/* Adjustable Density Laser Calibration Grid */}
       {fineGrid && (
-        <g opacity="0.24">
-          {Array.from({ length: 19 }, (_, idx) => (idx + 1) * 5).map((pos) => (
-            <React.Fragment key={`g-${pos}`}>
-              <line
-                x1={pos}
-                y1={0}
-                x2={pos}
-                y2={100}
-                stroke={pos % 25 === 0 ? '#38bdf8' : '#e2e8f0'}
-                strokeWidth={pos % 25 === 0 ? 0.25 : 0.14}
-                strokeDasharray={pos % 25 === 0 ? undefined : '1 1'}
-              />
-              <line
-                x1={0}
-                y1={pos}
-                x2={100}
-                y2={pos}
-                stroke={pos % 25 === 0 ? '#38bdf8' : '#e2e8f0'}
-                strokeWidth={pos % 25 === 0 ? 0.25 : 0.14}
-                strokeDasharray={pos % 25 === 0 ? undefined : '1 1'}
-              />
-            </React.Fragment>
-          ))}
+        <g opacity="0.28">
+          {Array.from({ length: safeGridDensity - 1 }, (_, idx) => idx + 1).map((lineIdx) => {
+            const pos = Number((lineIdx * gridStepPct).toFixed(3));
+            const isMajor =
+              (safeGridDensity % 2 === 0 && lineIdx === safeGridDensity / 2) ||
+              (safeGridDensity % 4 === 0 &&
+                (lineIdx === safeGridDensity / 4 || lineIdx === (safeGridDensity * 3) / 4)) ||
+              (safeGridDensity % 4 !== 0 &&
+                lineIdx % Math.max(2, Math.round(safeGridDensity / 4)) === 0);
+            return (
+              <React.Fragment key={`g-${safeGridDensity}-${lineIdx}`}>
+                <line
+                  x1={pos}
+                  y1={0}
+                  x2={pos}
+                  y2={100}
+                  stroke={isMajor ? '#38bdf8' : '#e2e8f0'}
+                  strokeWidth={isMajor ? 0.25 : 0.14}
+                  strokeDasharray={isMajor ? undefined : '1 1'}
+                />
+                <line
+                  x1={0}
+                  y1={pos}
+                  x2={100}
+                  y2={pos}
+                  stroke={isMajor ? '#38bdf8' : '#e2e8f0'}
+                  strokeWidth={isMajor ? 0.25 : 0.14}
+                  strokeDasharray={isMajor ? undefined : '1 1'}
+                />
+              </React.Fragment>
+            );
+          })}
         </g>
       )}
 
@@ -391,7 +409,10 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
         if (m.type === 'joint' && m.points.length >= 3) {
           const [a, b, c] = m.points;
           const arcD = buildJointArcPath(a, b, c, 5.5);
-          const boxX = Math.max(1.5, Math.min(78, b.xPct + 2.2));
+          const dev = Number((m.deviationDeg ?? Math.abs(180 - m.angleDeg)).toFixed(1));
+          const jointLabel = `${m.angleDeg.toFixed(1)}° (±${dev.toFixed(1)}°)`;
+          const boxW = 24.5;
+          const boxX = Math.max(1.5, Math.min(98.5 - boxW, b.xPct + 2.2));
           const boxY = Math.max(2, Math.min(93, b.yPct - 3.8));
           return (
             <g key={m.id}>
@@ -446,23 +467,23 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
               <rect
                 x={boxX}
                 y={boxY}
-                width={15.5}
+                width={boxW}
                 height={3.6}
                 rx={0.9}
-                fill="rgba(15, 23, 42, 0.88)"
+                fill="rgba(15, 23, 42, 0.9)"
                 stroke={col}
                 strokeWidth={0.32}
               />
               <text
-                x={boxX + 7.75}
-                y={boxY + 2.55}
+                x={boxX + boxW / 2}
+                y={boxY + 2.5}
                 textAnchor="middle"
                 fill="#ffffff"
-                fontSize="2.2"
+                fontSize="2.05"
                 fontFamily="ui-monospace, monospace"
                 fontWeight="700"
               >
-                {m.angleDeg.toFixed(1)}°
+                {jointLabel}
               </text>
             </g>
           );

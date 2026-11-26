@@ -1,0 +1,43 @@
+{
+  "apps": [
+    {
+      "flavor": "admin",
+      "packageId": "ru.etalonpravilo.admin",
+      "name": "ЭТАЛОН ПРАВИЛО — Администратор",
+      "shortName": "Админ",
+      "startUrl": "/?app=admin",
+      "manifestPath": "/manifest-admin.webmanifest",
+      "icon192": "/android-admin-192.png",
+      "icon512": "/android-admin-512.png",
+      "maskableIcon512": "/android-admin-maskable-512.png",
+      "themeColor": "#0f172a",
+      "backgroundColor": "#f8fafc"
+    },
+    {
+      "flavor": "trainer",
+      "packageId": "ru.etalonpravilo.trainer",
+      "name": "ЭТАЛОН ПРАВИЛО — Тренер",
+      "shortName": "Тренер",
+      "startUrl": "/?app=trainer",
+      "manifestPath": "/manifest-trainer.webmanifest",
+      "icon192": "/android-trainer-192.png",
+      "icon512": "/android-trainer-512.png",
+      "maskableIcon512": "/android-trainer-maskable-512.png",
+      "themeColor": "#0f172a",
+      "backgroundColor": "#f8fafc"
+    },
+    {
+      "flavor": "client",
+      "packageId": "ru.etalonpravilo.client",
+      "name": "ЭТАЛОН ПРАВИЛО — Клиент",
+      "shortName": "Клиент",
+      "startUrl": "/?app=client",
+      "manifestPath": "/manifest-client.webmanifest",
+      "icon192": "/android-client-192.png",
+      "icon512": "/android-client-512.png",
+      "maskableIcon512": "/android-client-maskable-512.png",
+      "themeColor": "#0f172a",
+      "backgroundColor": "#f8fafc"
+    }
+  ]
+}

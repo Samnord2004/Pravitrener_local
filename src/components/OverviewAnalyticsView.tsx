@@ -28,7 +28,9 @@ import type {
   RatingReview,
   BrandAboutInfo,
   StudioSocialLinks,
+  LegalAcceptanceRecord,
 } from '../types';
+import { LegalAgreementsPanel, OwnerLegalConfirmationsPanel } from './LegalAgreementsModal';
 import { apiRequest } from '../utils/api';
 import { formatStudioOpenHours, parseStudioScheduleHours } from '../utils/studioHours';
 import { DEFAULT_BRAND_ABOUT } from '../utils/brandAbout';
@@ -54,6 +56,9 @@ interface OverviewProps {
   services: ServiceItem[];
   reviews?: RatingReview[];
   brandAbout?: BrandAboutInfo;
+  legalAcceptances?: LegalAcceptanceRecord[];
+  onLegalAccepted?: (res: { user: UserAccount; record: LegalAcceptanceRecord }) => void;
+  onLegalMarkedRead?: (rec: LegalAcceptanceRecord) => void;
   onBrandAboutUpdated?: (info: BrandAboutInfo) => void;
   onStudioAdded: (studio: Studio) => void;
   onStudioUpdated: (studio: Studio) => void;
@@ -72,6 +77,9 @@ export const OverviewAnalyticsView: React.FC<OverviewProps> = ({
   services,
   reviews = [],
   brandAbout,
+  legalAcceptances = [],
+  onLegalAccepted,
+  onLegalMarkedRead,
   onBrandAboutUpdated,
   onStudioAdded,
   onStudioUpdated,
@@ -81,7 +89,9 @@ export const OverviewAnalyticsView: React.FC<OverviewProps> = ({
   const effectiveBrandAbout = brandAbout || DEFAULT_BRAND_ABOUT;
 
   const [showBrandAboutModal, setShowBrandAboutModal] = useState(false);
-  const [brandEditorInitialTab, setBrandEditorInitialTab] = useState<'general' | 'blocks'>('general');
+  const [brandEditorInitialTab, setBrandEditorInitialTab] = useState<
+    'general' | 'blocks' | 'branding'
+  >('general');
 
   const [dateFrom, setDateFrom] = useState(() => {
     const d = new Date();
@@ -1004,6 +1014,17 @@ export const OverviewAnalyticsView: React.FC<OverviewProps> = ({
               <button
                 type="button"
                 onClick={() => {
+                  setBrandEditorInitialTab('branding');
+                  setShowBrandAboutModal(true);
+                }}
+                className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-medium cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-800/70"
+              >
+                <ImagePlus className="w-3.5 h-3.5 text-cyan-600" />
+                <span>Логотип и главная</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
                   setBrandEditorInitialTab('blocks');
                   setShowBrandAboutModal(true);
                 }}
@@ -1078,6 +1099,19 @@ export const OverviewAnalyticsView: React.FC<OverviewProps> = ({
           </div>
         </div>
       )}
+
+      {currentUser.role === 'owner' && (
+        <OwnerLegalConfirmationsPanel
+          confirmations={legalAcceptances}
+          onMarkedRead={onLegalMarkedRead}
+        />
+      )}
+
+      <LegalAgreementsPanel
+        currentUser={currentUser}
+        brandName={effectiveBrandAbout.brandName}
+        onAccepted={onLegalAccepted}
+      />
 
       {/* Modal: Create / Edit Studio */}
       {showStudioModal && (

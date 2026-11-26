@@ -1,0 +1,14 @@
+{
+  "appId": "ru.etalonpravilo.admin",
+  "appName": "ЭТАЛОН ПРАВИЛО — Администратор",
+  "webDir": "../../dist",
+  "server": {
+    "url": "https://studio.yourdomain.ru/?app=admin",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f8fafc"
+  }
+}

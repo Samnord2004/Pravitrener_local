@@ -8,7 +8,6 @@ import { promisify } from 'util';
 import bcrypt from 'bcryptjs';
 import nodemailer from 'nodemailer';
 import { WebSocketServer, WebSocket } from 'ws';
-import { createServer as createViteServer } from 'vite';
 import { getDb, saveDb } from './server/db.ts';
 import type {
   UserAccount,
@@ -38,7 +37,12 @@ import type {
   ReviewTargetType,
   StudioDatabase,
   SystemSecuritySettings,
+  LegalAcceptanceRecord,
 } from './src/types.ts';
+import {
+  CURRENT_LEGAL_BUNDLE_VERSION,
+  getLegalAgreementsForRole,
+} from './src/utils/legalAgreements.ts';
 import { calculateMiScale2Metrics } from './src/utils/miScale2.ts';
 import { isValidStudioPhotoSrc } from './src/utils/reviews.ts';
 import {
@@ -933,7 +937,7 @@ async function startServer() {
         subscriptionPlans: db.subscriptionPlans.filter((p) => p.active),
         clientSubscriptions: db.clientSubscriptions.filter((s) => s.clientId === clientId && s.status !== 'archived'),
         subscriptionUsages: db.subscriptionUsages.filter((u) => u.clientId === clientId),
-        exercises: db.exercises.filter((ex) => canUserViewExercise(ex, user)),
+        exercises: [],
         programs: db.programs.filter((p) => !p.clientId || p.clientId === clientId),
         clients: clientProfile ? [clientProfile] : [],
         bookings: db.bookings.filter((b) => b.clientId === clientId),
@@ -947,6 +951,7 @@ async function startServer() {
         trainerPosts: (db.trainerPosts || []).filter((p) => p.status === 'published'),
         reviews: db.reviews || [],
         brandAbout: db.brandAbout || DEFAULT_BRAND_ABOUT,
+        legalAcceptances: (db.legalAcceptances || []).filter((r) => r.userId === user.id),
       });
     }
 
@@ -994,6 +999,7 @@ async function startServer() {
         ),
         reviews: db.reviews || [],
         brandAbout: db.brandAbout || DEFAULT_BRAND_ABOUT,
+        legalAcceptances: (db.legalAcceptances || []).filter((r) => r.userId === user.id),
       });
     }
 
@@ -1020,6 +1026,10 @@ async function startServer() {
       trainerPosts: db.trainerPosts || [],
       reviews: db.reviews || [],
       brandAbout: db.brandAbout || DEFAULT_BRAND_ABOUT,
+      legalAcceptances:
+        user.role === 'owner'
+          ? db.legalAcceptances || []
+          : (db.legalAcceptances || []).filter((r) => r.userId === user.id),
     });
   });
 
@@ -3515,6 +3525,12 @@ async function startServer() {
     res.json({ ok: true });
   });
 
+  // Public Brand & Start Screen Config (no login required)
+  app.get('/api/public/brand-about', (_req, res) => {
+    const db = getDb();
+    res.json(db.brandAbout || DEFAULT_BRAND_ABOUT);
+  });
+
   // Public Online Booking Link Endpoints (no login required for client booking link /?book=1)
   app.get('/api/public/booking-info', (req, res) => {
     const db = getDb();
@@ -3915,15 +3931,258 @@ async function startServer() {
     }
   });
 
+  // Legal Agreements Acceptance & Owner Confirmations
+  app.get('/api/legal/confirmations', requireAuth(), (req, res) => {
+    const currentUser = (req as express.Request & { currentUser: UserAccount }).currentUser;
+    const db = getDb();
+    const list = db.legalAcceptances || [];
+    res.json({
+      confirmations:
+        currentUser.role === 'owner'
+          ? list
+          : list.filter((r) => r.userId === currentUser.id),
+    });
+  });
+
+  app.post('/api/legal/accept', requireAuth(), async (req, res) => {
+    const currentUser = (req as express.Request & { currentUser: UserAccount }).currentUser;
+    const { acceptedIds, confirmRead, appFlavor } = (req.body || {}) as {
+      acceptedIds?: unknown;
+      confirmRead?: unknown;
+      appFlavor?: unknown;
+    };
+
+    if (confirmRead !== true) {
+      return res.status(400).json({
+        error: 'Необходимо отметить подтверждение полного прочтения юридических соглашений.',
+      });
+    }
+
+    const requiredDocs = getLegalAgreementsForRole(currentUser.role);
+    const receivedIds = Array.isArray(acceptedIds)
+      ? acceptedIds.filter((id): id is string => typeof id === 'string')
+      : [];
+    const receivedSet = new Set(receivedIds);
+    const missing = requiredDocs.filter((d) => !receivedSet.has(d.id));
+    if (missing.length > 0) {
+      return res.status(400).json({
+        error: `Необходимо принять все обязательные соглашения (осталось: ${missing.length}).`,
+      });
+    }
+
+    const db = getDb();
+    const user = db.users.find((u) => u.id === currentUser.id);
+    if (!user) {
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+
+    const nowDisplay = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const validFlavor: LegalAcceptanceRecord['appFlavor'] =
+      appFlavor === 'admin' || appFlavor === 'trainer' || appFlavor === 'client'
+        ? appFlavor
+        : 'web';
+    const studioName = user.studioId
+      ? db.studios.find((s) => s.id === user.studioId)?.name
+      : 'Вся сеть';
+
+    user.legalAcceptedAt = nowDisplay;
+    user.legalAgreementsVersion = CURRENT_LEGAL_BUNDLE_VERSION;
+
+    const record: LegalAcceptanceRecord = {
+      id: uid('legal'),
+      userId: user.id,
+      userName: user.name,
+      userLogin: user.login,
+      userRole: user.role,
+      studioId: user.studioId,
+      studioName,
+      appFlavor: validFlavor,
+      agreementsVersion: CURRENT_LEGAL_BUNDLE_VERSION,
+      acceptedItems: requiredDocs.map((doc) => ({
+        agreementId: doc.id,
+        title: doc.shortTitle,
+        version: doc.version,
+        acceptedAt: nowDisplay,
+      })),
+      acceptedAt: nowDisplay,
+      readConfirmedAt: nowDisplay,
+      userAgent: String(req.headers['user-agent'] || '').slice(0, 220),
+      ownerNotifiedAt: nowDisplay,
+      ownerNotificationStatus: 'sent',
+      ownerEmailDispatched: false,
+    };
+
+    if (!Array.isArray(db.legalAcceptances)) {
+      db.legalAcceptances = [];
+    }
+    db.legalAcceptances.unshift(record);
+
+    const roleRu =
+      user.role === 'admin'
+        ? 'Администратор'
+        : user.role === 'trainer'
+        ? 'Тренер'
+        : user.role === 'client'
+        ? 'Клиент'
+        : 'Владелец';
+    const flavorRu =
+      validFlavor === 'admin'
+        ? 'Android-приложение Администратора'
+        : validFlavor === 'trainer'
+        ? 'Android-приложение Тренера'
+        : validFlavor === 'client'
+        ? 'Android-приложение Клиента'
+        : 'Веб-приложение';
+
+    const owners = db.users.filter((u) => u.role === 'owner' && u.active);
+    const primaryOwner = owners[0];
+
+    const ownerPushLog: NotificationLog = {
+      id: uid('nlog'),
+      templateId: 'legal-consent-confirmation',
+      channel: 'push',
+      recipientName: primaryOwner?.name || 'Владелец сети',
+      recipientContact: primaryOwner?.email || primaryOwner?.phone || 'Владелец',
+      subject: `Подтверждение юридических соглашений · ${roleRu}: ${user.name}`,
+      messagePreview: `${roleRu} ${user.name} (${user.login}) подтвердил(а) прочтение и согласие со всеми ${requiredDocs.length} юридическими документами (${flavorRu}, ${nowDisplay}).`,
+      cabinetLink: '/',
+      status: 'delivered',
+      sentAt: nowDisplay,
+    };
+    db.notificationLogs.unshift(ownerPushLog);
+
+    const cfg = db.messagingSettings?.email;
+    const ownerEmails = owners
+      .map((o) => (o.email || '').trim())
+      .filter((e) => e.includes('@'));
+    if (ownerEmails.length > 0 && cfg?.enabled && cfg.host && cfg.user && cfg.password) {
+      try {
+        const transporter = nodemailer.createTransport({
+          host: cfg.host,
+          port: Number(cfg.port) || 465,
+          secure: Boolean(cfg.secure),
+          auth: { user: cfg.user, pass: cfg.password },
+        });
+        const docsListText = requiredDocs.map((d, idx) => `${idx + 1}. ${d.title} (v${d.version})`).join('\n');
+        await transporter.sendMail({
+          from: `"${cfg.fromName || 'ЭТАЛОН ПРАВИЛО'}" <${cfg.fromEmail || cfg.user}>`,
+          to: ownerEmails.join(', '),
+          subject: `[ЭТАЛОН ПРАВИЛО] Подтверждение юридических соглашений — ${roleRu} ${user.name}`,
+          text:
+            `Уведомление владельцу сети студий.\n\n` +
+            `Пользователь: ${user.name} (логин: ${user.login})\n` +
+            `Роль: ${roleRu}\n` +
+            `Приложение: ${flavorRu}\n` +
+            `Студия: ${studioName || 'Сеть'}\n` +
+            `Дата и время подтверждения прочтения: ${nowDisplay}\n` +
+            `Пакет соглашений: v${CURRENT_LEGAL_BUNDLE_VERSION}\n\n` +
+            `Принятые документы:\n${docsListText}\n`,
+        });
+        record.ownerEmailDispatched = true;
+      } catch {
+        record.ownerEmailDispatched = false;
+      }
+    }
+
+    saveDb(db);
+    const safeUser = stripPassword(user);
+    broadcast('user:updated', safeUser);
+    broadcast('legal:accepted', record);
+    broadcast('notification:push', ownerPushLog);
+
+    res.json({ ok: true, user: safeUser, record, ownerLog: ownerPushLog });
+  });
+
+  app.post('/api/legal/confirmations/:id/mark-read', requireAuth(['owner']), (req, res) => {
+    const db = getDb();
+    const rec = (db.legalAcceptances || []).find((r) => r.id === req.params.id);
+    if (!rec) {
+      return res.status(404).json({ error: 'Запись подтверждения не найдена' });
+    }
+    rec.ownerNotificationStatus = 'read_by_owner';
+    rec.ownerReadAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    saveDb(db);
+    broadcast('legal:updated', rec);
+    res.json({ ok: true, record: rec });
+  });
+
+  // Separate Role-Scoped Android Web App Manifests (Admin / Trainer / Client)
+  const buildRoleManifest = (flavor: 'admin' | 'trainer' | 'client', brandName: string) => {
+    const cleanBrand = (brandName || 'ЭТАЛОН ПРАВИЛО').trim();
+    const metaMap = {
+      admin: {
+        name: `${cleanBrand} — Администратор`,
+        short_name: 'Админ',
+        description: 'Приложение администратора студии: расписание, записи, клиенты, услуги, абонементы и рассылки.',
+      },
+      trainer: {
+        name: `${cleanBrand} — Тренер`,
+        short_name: 'Тренер',
+        description: 'Приложение тренера: расписание смен, телеметрия датчиков, осанка и программы.',
+      },
+      client: {
+        name: `${cleanBrand} — Клиент`,
+        short_name: 'Клиент',
+        description: 'Клиентское приложение: онлайн-запись, абонементы, результаты и методические блоки.',
+      },
+    }[flavor];
+
+    return {
+      id: `/?app=${flavor}`,
+      name: metaMap.name,
+      short_name: metaMap.short_name,
+      description: metaMap.description,
+      theme_color: '#0f172a',
+      background_color: '#f8fafc',
+      display: 'standalone',
+      orientation: 'any',
+      start_url: `/?app=${flavor}`,
+      scope: '/',
+      icons: [
+        {
+          src: `/android-${flavor}-192.png`,
+          sizes: '192x192',
+          type: 'image/png',
+          purpose: 'any',
+        },
+        {
+          src: `/android-${flavor}-512.png`,
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'any',
+        },
+        {
+          src: `/android-${flavor}-maskable-512.png`,
+          sizes: '512x512',
+          type: 'image/png',
+          purpose: 'maskable',
+        },
+      ],
+    };
+  };
+
+  (['admin', 'trainer', 'client'] as const).forEach((flavor) => {
+    app.get(`/manifest-${flavor}.webmanifest`, (_req, res) => {
+      const db = getDb();
+      const brandName = db.brandAbout?.brandName || DEFAULT_BRAND_ABOUT.brandName;
+      res.setHeader('Content-Type', 'application/manifest+json; charset=utf-8');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.json(buildRoleManifest(flavor, brandName));
+    });
+  });
+
   // Vite Dev or Static Production
   if (process.env.NODE_ENV !== 'production') {
+    const { createServer: createViteServer } = await import('vite');
     const vite = await createViteServer({
       server: { middlewareMode: true, hmr: false, ws: false, watch: null },
       appType: 'spa',
     });
     app.use(vite.middlewares);
   } else {
-    const distDir = path.resolve(process.cwd(), 'dist');
+    const distDir = process.env.STUDIO_DIST_DIR
+      ? path.resolve(process.env.STUDIO_DIST_DIR)
+      : path.resolve(process.cwd(), 'dist');
     app.use(express.static(distDir));
     app.get('*', (_req, res) => {
       res.sendFile(path.join(distDir, 'index.html'));

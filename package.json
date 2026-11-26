@@ -8,8 +8,14 @@
     "start": "node server.ts",
     "build": "vite build",
     "preview": "vite preview",
-    "clean": "rm -rf dist server.js",
-    "lint": "tsc --noEmit"
+    "clean": "rm -rf dist server.js desktop/bundle release-desktop",
+    "lint": "tsc --noEmit",
+    "desktop:prepare": "node desktop/prepare-bundle.mjs",
+    "desktop:install": "npm --prefix desktop install",
+    "desktop:mac": "node desktop/prepare-bundle.mjs && npm --prefix desktop run dist:mac:only",
+    "desktop:mac:universal": "node desktop/prepare-bundle.mjs && npm --prefix desktop run dist:mac:universal:only",
+    "desktop:win": "node desktop/prepare-bundle.mjs && npm --prefix desktop run dist:win:only",
+    "android:prepare": "node android/prepare-android-apps.mjs"
   },
   "dependencies": {
     "@google/genai": "^2.4.0",

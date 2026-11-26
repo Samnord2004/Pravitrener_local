@@ -255,9 +255,9 @@ export const PublicBookingView: React.FC<PublicBookingViewProps> = ({ onExitToLo
         <div className="flex items-center gap-3 min-w-0">
           <div className="h-10 rounded-lg bg-white border st-border px-2.5 py-1 flex items-center shrink-0">
             <img
-              src="/assets/aistudio/logo_full_etalon.png"
-              alt="ЭТАЛОН ПРАВИЛО"
-              className="h-full w-auto object-contain"
+              src={info.brandAbout?.logoUrl || '/assets/aistudio/logo_full_etalon.png'}
+              alt={info.brandAbout?.brandName || 'ЭТАЛОН ПРАВИЛО'}
+              className="h-full w-auto max-w-[180px] object-contain"
             />
           </div>
           <div className="text-xs st-muted truncate hidden sm:block">Прямая онлайн-запись на сессию</div>

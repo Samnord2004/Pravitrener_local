@@ -82,7 +82,7 @@ export function exportSessionReportPdf(report: PdfSessionReportInput): void {
       ? `Рост до: ${report.heightBeforeCm.toFixed(1)} см`
       : 'Рост: не зафиксирован';
   ctx.fillText(heightText, W - 92, y + 84);
-  ctx.fillText(`Ср. пульс (Wahoo): ${report.avgHrBpm} уд/мин`, W - 92, y + 120);
+  ctx.fillText(`Ср. пульс (пульсометр): ${report.avgHrBpm} уд/мин`, W - 92, y + 120);
   ctx.fillStyle = '#0891b2';
   ctx.fillText(`Оплата: ${report.paymentLabel} · ${report.amountPaidRub.toLocaleString('ru-RU')} ₽`, W - 92, y + 156);
   ctx.textAlign = 'left';
@@ -110,11 +110,11 @@ export function exportSessionReportPdf(report: PdfSessionReportInput): void {
     ctx.fillText(k.value, x + 20, y + 86);
   });
 
-  // Telemetry Waveform Chart (MYOblue EMG + Total Winch Load)
+  // Telemetry Waveform Chart (EMG + Total Winch Load)
   y = 605;
   ctx.fillStyle = '#0f172a';
   ctx.font = '700 23px "Plus Jakarta Sans", sans-serif';
-  ctx.fillText('Телеметрия: общая нагрузка лебёдки (кг) и миография MYOblue v1.2 (мВ)', 64, y);
+  ctx.fillText('Телеметрия: общая нагрузка лебёдки (кг) и миодатчики (мВ)', 64, y);
 
   y += 22;
   const chartW = W - 128;
@@ -169,12 +169,12 @@ export function exportSessionReportPdf(report: PdfSessionReportInput): void {
     ctx.fillStyle = '#0891b2';
     ctx.fillText('— Тяга лебёдки (кг)', 84, y + 30);
     ctx.fillStyle = '#d97706';
-    ctx.fillText('— ЭМГ MYOblue CH1 (мВ)', 290, y + 30);
+    ctx.fillText('— Миодатчик CH1 (мВ)', 290, y + 30);
   } else {
     ctx.font = '500 20px "DM Sans", sans-serif';
     ctx.fillStyle = '#64748b';
     ctx.textAlign = 'center';
-    ctx.fillText('Реальная телеметрия с датчиков ESP32 / MYOblue не поступала в ходе сессии', 64 + chartW / 2, y + chartH / 2);
+    ctx.fillText('Реальная телеметрия с тензодатчиков конечностей и миодатчиков не поступала', 64 + chartW / 2, y + chartH / 2);
     ctx.textAlign = 'left';
   }
 
@@ -247,7 +247,7 @@ export function exportSessionReportPdf(report: PdfSessionReportInput): void {
   // Footer
   ctx.fillStyle = '#64748b';
   ctx.font = '400 16px "DM Sans", sans-serif';
-  ctx.fillText('Сформировано в системе ЭТАЛОН ПРАВИЛО · Автоматическая телеметрия BLE / ESP32', 64, H - 48);
+  ctx.fillText('Сформировано в системе ЭТАЛОН ПРАВИЛО · Автоматическая телеметрия датчиков', 64, H - 48);
 
   const imgData = canvas.toDataURL('image/png');
   const pdf = new jsPDF({ orientation: 'portrait', unit: 'pt', format: 'a4' });

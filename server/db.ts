@@ -6,10 +6,166 @@ import { DEFAULT_BRAND_ABOUT, DEFAULT_METHODOLOGY_BLOCKS } from '../src/utils/br
 import { inferExerciseDifficulty } from '../src/utils/serviceCategories.ts';
 import { createInitialDatabase } from './seed.ts';
 
-const DATA_DIR = path.resolve(process.cwd(), 'data');
+const DATA_DIR = process.env.STUDIO_DATA_DIR
+  ? path.resolve(process.env.STUDIO_DATA_DIR)
+  : path.resolve(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'studio-db.json');
 
 let cachedDb: StudioDatabase | null = null;
+
+function cleanLegacySensorBrands(text: string): string {
+  return text
+    .replace(/тензодатчики\s+конечностей\s+ESP32/gi, 'Тензодатчики конечностей')
+    .replace(/Тензодатчики\s+ESP32/gi, 'Тензодатчики конечностей')
+    .replace(/тензодатчиков\s+ESP32/gi, 'тензодатчиков конечностей')
+    .replace(/по\s+датчикам\s+ESP32/gi, 'по тензодатчикам конечностей, позволяющим точно фиксировать нагрузку')
+    .replace(/на\s+конечности\s+ESP32/gi, 'тензодатчиками конечностей, позволяющими точно фиксировать нагрузку')
+    .replace(/\s*ESP32-S3\s*\+\s*4×HX711 Load Cell/gi, 'Тензодатчики конечностей, позволяющие точно фиксировать нагрузку (4 канала)')
+    .replace(/\bESP32\b/gi, 'тензодатчики конечностей')
+    .replace(/Мио-датчики\s+MYOblue/gi, 'Миодатчики')
+    .replace(/Wireless\s+EMG\s+MYOblue\s*v?[\d.]*\s*\(2-ch\)/gi, 'Беспроводные миодатчики ЭМГ (2 канала)')
+    .replace(/миографии\s+MYOblue\s*(?:EMG)?/gi, 'миодатчиков')
+    .replace(/Миография\s*\(MYOblue\s*EMG\)/gi, 'Миография (миодатчики ЭМГ)')
+    .replace(/BLE-датчиков\s+MYOblue,\s*Wahoo\s+TICKR\s+FIT,\s*тонометра\s+B05,\s*весов\s+Xiaomi\s+Mi\s+Scale\s+2\s+и\s+тензодатчиков\s+конечностей/gi, 'миодатчиков, пульсометра, тонометра, весов и тензодатчиков конечностей, позволяющих точно фиксировать нагрузку')
+    .replace(/\bMYOblue(?:\s+EMG)?\b/gi, 'миодатчики')
+    .replace(/Пульсометр\s+Wahoo\s+TICKR\s+FIT/gi, 'Пульсометр')
+    .replace(/Wahoo\s+TICKR\s+FIT\s+Optical\s+Armband/gi, 'Оптический пульсометр на предплечье')
+    .replace(/кардиоконтролем\s+Wahoo\s+TICKR\s+FIT/gi, 'контролем пульсометра')
+    .replace(/\(\s*Wahoo\s+TICKR\s+FIT\s*\)/gi, '(пульсометр)')
+    .replace(/ЧСС\s*\(Wahoo\s+TICKR\s+FIT\)/gi, 'пульсометра')
+    .replace(/\bWahoo\s+TICKR\s+FIT\b/gi, 'пульсометр')
+    .replace(/Тонометр\s+Bluetooth\s+B05/gi, 'Тонометр')
+    .replace(/BPM-B05\s+Auto\s+BLE\s+Cuff/gi, 'Автоматический беспроводной тонометр')
+    .replace(/тонометра\s+B05/gi, 'тонометра')
+    .replace(/контроль\s+B05/gi, 'контроль тонометром')
+    .replace(/\bи\s+B05\b/gi, 'и тонометром')
+    .replace(/\bB05\b/gi, 'Тонометр');
+}
+
+function normalizeLegacyHardwareLabels(db: StudioDatabase): boolean {
+  let changed = false;
+
+  if (Array.isArray(db.equipment)) {
+    db.equipment = db.equipment.map((d) => {
+      if (d.type === 'esp32_limbs' && (d.name.includes('ESP32') || d.model.includes('ESP32'))) {
+        changed = true;
+        return {
+          ...d,
+          name: 'Тензодатчики конечностей',
+          model: 'Тензодатчики конечностей, позволяющие точно фиксировать нагрузку (4 канала)',
+        };
+      }
+      if (d.type === 'myoblue_emg' && (d.name.includes('MYOblue') || d.model.includes('MYOblue'))) {
+        changed = true;
+        return {
+          ...d,
+          name: 'Миодатчики',
+          model: 'Беспроводные миодатчики ЭМГ (2 канала)',
+        };
+      }
+      if (d.type === 'wahoo_tickr' && (d.name.includes('Wahoo') || d.model.includes('Wahoo') || d.name.includes('TICKR'))) {
+        changed = true;
+        return {
+          ...d,
+          name: 'Пульсометр',
+          model: 'Оптический пульсометр на предплечье',
+        };
+      }
+      if (d.type === 'bp_b05' && (d.name.includes('B05') || d.model.includes('B05'))) {
+        changed = true;
+        return {
+          ...d,
+          name: 'Тонометр',
+          model: 'Автоматический беспроводной тонометр',
+        };
+      }
+      return d;
+    });
+  }
+
+  if (db.brandAbout) {
+    const ba = db.brandAbout;
+    const nextSub = cleanLegacySensorBrands(ba.homeSubtitle || '');
+    const nextPoints = (ba.whyUsPoints || []).map(cleanLegacySensorBrands);
+    const nextBlocks = (ba.methodologyBlocks || []).map((b) => ({
+      ...b,
+      contraindicationsNote: b.contraindicationsNote ? cleanLegacySensorBrands(b.contraindicationsNote) : b.contraindicationsNote,
+    }));
+    if (
+      nextSub !== (ba.homeSubtitle || '') ||
+      JSON.stringify(nextPoints) !== JSON.stringify(ba.whyUsPoints || []) ||
+      JSON.stringify(nextBlocks) !== JSON.stringify(ba.methodologyBlocks || [])
+    ) {
+      changed = true;
+      db.brandAbout = {
+        ...ba,
+        homeSubtitle: nextSub,
+        whyUsPoints: nextPoints,
+        methodologyBlocks: nextBlocks,
+      };
+    }
+  }
+
+  if (Array.isArray(db.services)) {
+    db.services = db.services.map((s) => {
+      const nextDesc = cleanLegacySensorBrands(s.description || '');
+      if (nextDesc !== (s.description || '')) {
+        changed = true;
+        return { ...s, description: nextDesc };
+      }
+      return s;
+    });
+  }
+
+  if (Array.isArray(db.users)) {
+    db.users = db.users.map((u) => {
+      if (!u.trainerProfile) return u;
+      const tp = u.trainerProfile;
+      const nextBio = cleanLegacySensorBrands(tp.bio || '');
+      const nextStyle = cleanLegacySensorBrands(tp.workStyle || '');
+      const nextSkills = (tp.skills || []).map(cleanLegacySensorBrands);
+      if (
+        nextBio !== (tp.bio || '') ||
+        nextStyle !== (tp.workStyle || '') ||
+        JSON.stringify(nextSkills) !== JSON.stringify(tp.skills || [])
+      ) {
+        changed = true;
+        return {
+          ...u,
+          trainerProfile: {
+            ...tp,
+            bio: nextBio,
+            workStyle: nextStyle,
+            skills: nextSkills,
+          },
+        };
+      }
+      return u;
+    });
+  }
+
+  if (Array.isArray(db.clients)) {
+    db.clients = db.clients.map((c) => {
+      const nextContra = cleanLegacySensorBrands(c.contraindications || '');
+      let anthroChanged = false;
+      const nextAnthro = (c.anthropometry || []).map((a) => {
+        const nextNote = a.notes ? cleanLegacySensorBrands(a.notes) : a.notes;
+        if (nextNote !== a.notes) {
+          anthroChanged = true;
+          return { ...a, notes: nextNote };
+        }
+        return a;
+      });
+      if (nextContra !== (c.contraindications || '') || anthroChanged) {
+        changed = true;
+        return { ...c, contraindications: nextContra, anthropometry: nextAnthro };
+      }
+      return c;
+    });
+  }
+
+  return changed;
+}
 
 export function getDb(): StudioDatabase {
   if (cachedDb) return cachedDb;
@@ -213,6 +369,12 @@ export function getDb(): StudioDatabase {
             visibility: ex.visibility === 'hidden' ? 'hidden' : 'public',
           };
         });
+      }
+      if (!Array.isArray(parsed.legalAcceptances)) {
+        parsed.legalAcceptances = [];
+      }
+      if (normalizeLegacyHardwareLabels(parsed)) {
+        saveDb(parsed);
       }
       cachedDb = parsed;
       return cachedDb;

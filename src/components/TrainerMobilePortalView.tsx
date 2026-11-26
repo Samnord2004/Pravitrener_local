@@ -39,6 +39,7 @@ import type {
   ClientSubscription,
   EquipmentDevice,
   Exercise,
+  LegalAcceptanceRecord,
   PaymentStatus,
   RatingReview,
   Studio,
@@ -69,6 +70,7 @@ import { ExercisesLibraryView } from './ExercisesLibraryView';
 import { PostureComparisonSection } from './PostureComparisonSection';
 import { TrainerAvatar, TrainerProfileEditorForm } from './TrainerProfileCard';
 import { DifficultyStars } from './DifficultyStars';
+import { LegalAgreementsModal, LegalAgreementsPanel } from './LegalAgreementsModal';
 import {
   computeProgramDifficulty,
   inferExerciseDifficulty,
@@ -87,6 +89,8 @@ interface TrainerPortalProps {
   clientSubscriptions: ClientSubscription[];
   trainerPosts: TrainerBlogPost[];
   reviews?: RatingReview[];
+  brandName?: string;
+  onLegalAccepted?: (res: { user: UserAccount; record: LegalAcceptanceRecord }) => void;
   scaleDevice?: EquipmentDevice;
   onDeviceUpdated?: (dev: EquipmentDevice) => void;
   onClientUpdated?: (c: ClientProfile) => void;
@@ -152,6 +156,8 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   clientSubscriptions,
   trainerPosts,
   reviews = [],
+  brandName,
+  onLegalAccepted,
   scaleDevice,
   onDeviceUpdated,
   onClientUpdated,
@@ -175,6 +181,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   onLaunchProgramInSession,
 }) => {
   const [tab, setTab] = useState<TrainerTab>('schedule');
+  const [showLegalModal, setShowLegalModal] = useState(false);
   const trainersList = useMemo(
     () => users.filter((u) => u.role === 'trainer'),
     [users]
@@ -936,6 +943,14 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
               ))}
             </select>
           )}
+          <button
+            type="button"
+            onClick={() => setShowLegalModal(true)}
+            className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border text-xs font-medium cursor-pointer"
+          >
+            <Scale className="w-3.5 h-3.5 st-accent-text" />
+            <span>Соглашения</span>
+          </button>
           <PWAInstallButton compact />
         </div>
       </div>
@@ -2621,6 +2636,13 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
             statusMessage={trainerProfileMsg}
             onSave={handleSaveTrainerPublicProfile}
           />
+
+          <LegalAgreementsPanel
+            currentUser={currentUser}
+            brandName={brandName}
+            compact
+            onAccepted={onLegalAccepted}
+          />
         </div>
       )}
 
@@ -2914,6 +2936,17 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
           </button>
         ))}
       </nav>
+
+      {showLegalModal && (
+        <LegalAgreementsModal
+          role={currentUser.role}
+          currentUser={currentUser}
+          mandatoryMode={false}
+          brandName={brandName}
+          onAccepted={onLegalAccepted}
+          onClose={() => setShowLegalModal(false)}
+        />
+      )}
     </div>
   );
 };

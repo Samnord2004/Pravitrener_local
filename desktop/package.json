@@ -1,0 +1,98 @@
+{
+  "name": "etalon-pravilo-desktop",
+  "version": "1.2.0",
+  "description": "Десктопный клиент и автономная станция студии ЭТАЛОН ПРАВИЛО (macOS M1+ / Windows .exe)",
+  "main": "main.cjs",
+  "scripts": {
+    "prepare": "node prepare-bundle.mjs",
+    "start": "electron .",
+    "dist:mac": "node prepare-bundle.mjs && electron-builder --mac --arm64",
+    "dist:mac:only": "electron-builder --mac --arm64",
+    "dist:mac:universal": "node prepare-bundle.mjs && electron-builder --mac --universal",
+    "dist:mac:universal:only": "electron-builder --mac --universal",
+    "dist:win": "node prepare-bundle.mjs && electron-builder --win --x64",
+    "dist:win:only": "electron-builder --win --x64",
+    "dist:all": "node prepare-bundle.mjs && electron-builder --mac --arm64 --win --x64",
+    "dist:linux": "node prepare-bundle.mjs && electron-builder --linux AppImage"
+  },
+  "build": {
+    "appId": "ru.etalonpravilo.desktop",
+    "productName": "ЭТАЛОН ПРАВИЛО",
+    "artifactName": "EtalonPravilo-${version}-${os}-${arch}.${ext}",
+    "directories": {
+      "output": "../release-desktop"
+    },
+    "files": [
+      "main.cjs",
+      "preload.cjs"
+    ],
+    "extraResources": [
+      {
+        "from": "bundle",
+        "to": "bundle"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.healthcare-fitness",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSBluetoothAlwaysUsageDescription": "Приложение использует Bluetooth для подключения весов, пульсометра, тонометра, миодатчиков и тензодатчиков конечностей.",
+        "NSBluetoothPeripheralUsageDescription": "Доступ к Bluetooth необходим для работы телеметрии студии.",
+        "NSCameraUsageDescription": "Доступ к камере используется для фотооценки осанки клиентов."
+      }
+    },
+    "dmg": {
+      "title": "ЭТАЛОН ПРАВИЛО"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ЭТАЛОН ПРАВИЛО",
+      "installerLanguages": [
+        "ru_RU",
+        "en_US"
+      ]
+    },
+    "linux": {
+      "target": [
+        "AppImage",
+        "deb"
+      ]
+    }
+  },
+  "devDependencies": {
+    "electron": "^35.0.0",
+    "electron-builder": "^25.1.8"
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "appId": "ru.etalonpravilo.trainer",
+  "appName": "ЭТАЛОН ПРАВИЛО — Тренер",
+  "webDir": "../../dist",
+  "server": {
+    "url": "https://studio.yourdomain.ru/?app=trainer",
+    "cleartext": false,
+    "androidScheme": "https"
+  },
+  "android": {
+    "allowMixedContent": false,
+    "backgroundColor": "#f8fafc"
+  }
+}

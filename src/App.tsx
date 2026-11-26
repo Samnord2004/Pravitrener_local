@@ -21,6 +21,7 @@ import {
   Sun,
   Moon,
   ClipboardList,
+  Scale,
 } from 'lucide-react';
 import type {
   Booking,
@@ -29,6 +30,7 @@ import type {
   ClientSubscription,
   EquipmentDevice,
   Exercise,
+  LegalAcceptanceRecord,
   MessagingSettings,
   MessengerMessage,
   NotificationLog,
@@ -81,6 +83,8 @@ import { ClientMobilePortalView } from './components/ClientMobilePortalView';
 import { TrainerMobilePortalView } from './components/TrainerMobilePortalView';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { StaffPushPromptModal } from './components/StaffPushPromptModal';
+import { LegalAgreementsModal } from './components/LegalAgreementsModal';
+import { userNeedsLegalAcceptance } from './utils/legalAgreements';
 import {
   formatNewBookingAlert,
   getNotificationPermissionState,
@@ -91,6 +95,11 @@ import {
   showStaffSystemNotification,
   type StaffPushPermissionState,
 } from './utils/staffNotifications';
+import {
+  applyAndroidAppManifestToDocument,
+  getActiveAndroidAppFlavor,
+  type AndroidAppFlavor,
+} from './utils/androidApps';
 
 type NavTab =
   | 'overview'
@@ -127,6 +136,7 @@ interface AppStateData {
   trainerPosts?: TrainerBlogPost[];
   reviews?: RatingReview[];
   brandAbout?: BrandAboutInfo;
+  legalAcceptances?: LegalAcceptanceRecord[];
 }
 
 const ROLE_DEFAULT_TAB: Record<UserAccount['role'], NavTab> = {
@@ -135,6 +145,18 @@ const ROLE_DEFAULT_TAB: Record<UserAccount['role'], NavTab> = {
   trainer: 'trainer_portal',
   client: 'client_portal',
 };
+
+function resolveDefaultTabForUser(
+  user: UserAccount,
+  androidFlavor: AndroidAppFlavor | null
+): { tab: NavTab; ownerAdmin: boolean } {
+  if (user.role === 'owner') {
+    if (androidFlavor === 'admin') return { tab: 'schedule', ownerAdmin: true };
+    if (androidFlavor === 'trainer') return { tab: 'trainer_portal', ownerAdmin: false };
+    if (androidFlavor === 'client') return { tab: 'client_portal', ownerAdmin: false };
+  }
+  return { tab: ROLE_DEFAULT_TAB[user.role], ownerAdmin: false };
+}
 
 const ROLE_TITLES: Record<UserAccount['role'], string> = {
   owner: 'Владелец сети',
@@ -154,8 +176,11 @@ export default function App() {
   const [activeProgramIdForSession, setActiveProgramIdForSession] = useState<string | null>(null);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const [legalSuccessNotice, setLegalSuccessNotice] = useState('');
   const [ownerAdminMode, setOwnerAdminMode] = useState(false);
   const [pushToast, setPushToast] = useState<NotificationLog | null>(null);
+  const [publicBrandAbout, setPublicBrandAbout] = useState<BrandAboutInfo | undefined>(undefined);
   const [wsConnected, setWsConnected] = useState(false);
   const [pushPermission, setPushPermission] = useState<StaffPushPermissionState>(() =>
     getNotificationPermissionState()
@@ -243,6 +268,27 @@ export default function App() {
     }
   }, []);
 
+  // Fetch public branding/home screen config on mount
+  useEffect(() => {
+    fetch('/api/public/brand-about')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        if (res && typeof res === 'object') {
+          setPublicBrandAbout(res as BrandAboutInfo);
+        }
+      })
+      .catch(() => undefined);
+  }, []);
+
+  const activeAndroidFlavor = useMemo(() => getActiveAndroidAppFlavor(), []);
+
+  useEffect(() => {
+    applyAndroidAppManifestToDocument(
+      activeAndroidFlavor,
+      data?.brandAbout?.brandName || publicBrandAbout?.brandName
+    );
+  }, [activeAndroidFlavor, data?.brandAbout?.brandName, publicBrandAbout?.brandName]);
+
   // Restore session on mount
   useEffect(() => {
     const token = getAuthToken();
@@ -253,7 +299,9 @@ export default function App() {
     apiRequest<{ user: UserAccount }>('/api/auth/me')
       .then(async ({ user }) => {
         setCurrentUser(user);
-        setActiveTab(ROLE_DEFAULT_TAB[user.role]);
+        const resolved = resolveDefaultTabForUser(user, activeAndroidFlavor);
+        setActiveTab(resolved.tab);
+        setOwnerAdminMode(resolved.ownerAdmin);
         setSelectedStudioId(user.role === 'owner' ? 'all' : user.studioId || 'all');
         setPushPermission(getNotificationPermissionState());
         if (shouldShowFirstLoginPushPrompt(user)) {
@@ -266,13 +314,15 @@ export default function App() {
         if (!navigator.onLine && cached?.data) {
           setCurrentUser(cached.data.user);
           setData(cached.data.state);
-          setActiveTab(ROLE_DEFAULT_TAB[cached.data.user.role]);
+          const resolved = resolveDefaultTabForUser(cached.data.user, activeAndroidFlavor);
+          setActiveTab(resolved.tab);
+          setOwnerAdminMode(resolved.ownerAdmin);
         } else {
           setAuthToken(null);
         }
       })
       .finally(() => setAuthChecked(true));
-  }, [loadAppState]);
+  }, [loadAppState, activeAndroidFlavor]);
 
   // Real-time WebSocket connection
   const currentUserId = currentUser?.id;
@@ -422,6 +472,7 @@ export default function App() {
             setSelectedStudioId((curr) => (curr === payload.id ? 'all' : curr));
           } else if (msg.event === 'brand-about:updated') {
             const ba = msg.payload as BrandAboutInfo;
+            setPublicBrandAbout(ba);
             setData((prev) => (prev ? { ...prev, brandAbout: ba } : prev));
           } else if (msg.event === 'review:updated') {
             const rev = msg.payload as RatingReview;
@@ -689,6 +740,24 @@ export default function App() {
                   }
                 : prev
             );
+          } else if (msg.event === 'legal:accepted' || msg.event === 'legal:updated') {
+            const rec = msg.payload as LegalAcceptanceRecord;
+            if (!rec?.id) return;
+            setData((prev) => {
+              if (!prev) return prev;
+              const viewer = currentUserRef.current;
+              if (viewer && viewer.role !== 'owner' && rec.userId !== viewer.id) {
+                return prev;
+              }
+              const list = prev.legalAcceptances || [];
+              const exists = list.some((item) => item.id === rec.id);
+              return {
+                ...prev,
+                legalAcceptances: exists
+                  ? list.map((item) => (item.id === rec.id ? rec : item))
+                  : [rec, ...list],
+              };
+            });
           }
         } catch {
           // Ignore malformed WS message
@@ -707,7 +776,9 @@ export default function App() {
   const handleLoginSuccess = async (user: UserAccount) => {
     setSessionNotice('');
     setCurrentUser(user);
-    setActiveTab(ROLE_DEFAULT_TAB[user.role]);
+    const resolved = resolveDefaultTabForUser(user, activeAndroidFlavor);
+    setActiveTab(resolved.tab);
+    setOwnerAdminMode(resolved.ownerAdmin);
     setSelectedStudioId(user.role === 'owner' ? 'all' : user.studioId || 'all');
     const perm = getNotificationPermissionState();
     setPushPermission(perm);
@@ -718,6 +789,9 @@ export default function App() {
   };
 
   const handleLogout = () => {
+    if (data?.brandAbout) {
+      setPublicBrandAbout(data.brandAbout);
+    }
     setAuthToken(null);
     setCurrentUser(null);
     setData(null);
@@ -739,10 +813,10 @@ export default function App() {
     const role = currentUser.role;
     const all: { id: NavTab; label: string; badge?: number; icon: React.ComponentType<{ className?: string }>; roles: UserAccount['role'][] }[] = [
       { id: 'overview', label: 'Обзор и аналитика', icon: BarChart3, roles: ['owner', 'admin'] },
-      { id: 'trainer_portal', label: 'Приложение тренера (PWA)', icon: ClipboardList, roles: ['trainer', 'owner', 'admin'] },
+      { id: 'trainer_portal', label: 'Приложение тренера (PWA)', icon: ClipboardList, roles: ['trainer', 'owner'] },
       { id: 'schedule', label: 'Расписание и записи', icon: CalendarClock, roles: ['owner', 'admin'] },
       { id: 'session', label: 'Тренировочная сессия', icon: Activity, roles: ['owner', 'admin', 'trainer'] },
-      { id: 'exercises', label: 'База упражнений', icon: Dumbbell, roles: ['owner', 'admin', 'trainer', 'client'] },
+      { id: 'exercises', label: 'База упражнений', icon: Dumbbell, roles: ['owner', 'admin', 'trainer'] },
       { id: 'clients', label: 'База клиентов', icon: Users, roles: ['owner', 'admin'] },
       { id: 'equipment', label: 'Оборудование BLE', icon: Cpu, roles: ['owner', 'admin', 'trainer'] },
       { id: 'services', label: 'Услуги и абонементы', icon: TicketPercent, roles: ['owner', 'admin'] },
@@ -753,10 +827,18 @@ export default function App() {
         icon: Send,
         roles: ['owner', 'admin'],
       },
-      { id: 'client_portal', label: 'Кабинет клиента (PWA)', icon: Smartphone, roles: ['client', 'owner', 'admin'] },
+      { id: 'client_portal', label: 'Кабинет клиента (PWA)', icon: Smartphone, roles: ['client', 'owner'] },
     ];
     return all.filter((item) => item.roles.includes(role));
   }, [currentUser, unreadMessagesCount]);
+
+  // Enforce strict role boundaries on activeTab
+  useEffect(() => {
+    if (!currentUser) return;
+    if (!navItems.some((n) => n.id === activeTab)) {
+      setActiveTab(ROLE_DEFAULT_TAB[currentUser.role]);
+    }
+  }, [currentUser, navItems, activeTab]);
 
   if (publicBookingMode) {
     return (
@@ -783,6 +865,7 @@ export default function App() {
     return (
       <LoginView
         sessionNotice={sessionNotice}
+        brandAbout={data?.brandAbout || publicBrandAbout}
         onOpenPublicBooking={() => setPublicBookingMode(true)}
         onSuccess={handleLoginSuccess}
       />
@@ -826,16 +909,20 @@ export default function App() {
               {sidebarCollapsed ? (
                 <div className="w-8 h-8 rounded-lg bg-white border st-border p-1 flex items-center justify-center shrink-0">
                   <img
-                    src="/assets/aistudio/logo_icon_etalon.png"
-                    alt="ЭТАЛОН ПРАВИЛО"
+                    src={
+                      data.brandAbout?.logoIconUrl ||
+                      data.brandAbout?.logoUrl ||
+                      '/assets/aistudio/logo_icon_etalon.png'
+                    }
+                    alt={data.brandAbout?.brandName || 'ЭТАЛОН ПРАВИЛО'}
                     className="w-full h-full object-contain"
                   />
                 </div>
               ) : (
                 <div className="h-9 rounded-lg bg-white border st-border px-2 py-0.5 flex items-center justify-center min-w-0 max-w-[196px]">
                   <img
-                    src="/assets/aistudio/logo_full_etalon.png"
-                    alt="ЭТАЛОН ПРАВИЛО"
+                    src={data.brandAbout?.logoUrl || '/assets/aistudio/logo_full_etalon.png'}
+                    alt={data.brandAbout?.brandName || 'ЭТАЛОН ПРАВИЛО'}
                     className="h-full w-auto max-w-full object-contain"
                   />
                 </div>
@@ -953,6 +1040,30 @@ export default function App() {
             </div>
           </div>
 
+          <button
+            type="button"
+            title="Юридические соглашения и конфиденциальность"
+            onClick={() => {
+              setShowLegalModal(true);
+              setMobileMenuOpen(false);
+            }}
+            className="w-full flex items-center justify-between gap-2 py-2 px-2.5 rounded-lg border st-border st-surface-muted text-xs font-medium hover:opacity-90 cursor-pointer"
+          >
+            <span className="flex items-center gap-2 min-w-0">
+              <Scale className="w-3.5 h-3.5 st-accent-text shrink-0" />
+              <span className={`truncate ${sidebarCollapsed ? 'lg:hidden' : ''}`}>
+                Юридические соглашения
+              </span>
+            </span>
+            {!sidebarCollapsed && currentUser.role !== 'owner' && (
+              <span
+                className={`w-2 h-2 rounded-full shrink-0 ${
+                  currentUser.legalAcceptedAt ? 'bg-emerald-500' : 'bg-amber-500'
+                }`}
+              />
+            )}
+          </button>
+
           <div className={`grid grid-cols-2 gap-1.5 ${sidebarCollapsed ? 'lg:grid-cols-1' : ''}`}>
             <button
               type="button"
@@ -1064,6 +1175,19 @@ export default function App() {
               : 'p-4 sm:p-6 lg:p-8 overflow-y-auto'
           }`}
         >
+          {legalSuccessNotice && (
+            <div className="mb-4 p-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/35 border border-emerald-200 dark:border-emerald-800 text-xs text-emerald-800 dark:text-emerald-200 flex items-center justify-between gap-3">
+              <span>{legalSuccessNotice}</span>
+              <button
+                type="button"
+                onClick={() => setLegalSuccessNotice('')}
+                className="p-1 opacity-75 hover:opacity-100 cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
+          )}
+
           {activeTab === 'overview' && (
             <OverviewAnalyticsView
               currentUser={currentUser}
@@ -1077,9 +1201,35 @@ export default function App() {
               services={data.services}
               reviews={data.reviews || []}
               brandAbout={data.brandAbout}
-              onBrandAboutUpdated={(ba) =>
-                setData((prev) => (prev ? { ...prev, brandAbout: ba } : prev))
+              legalAcceptances={data.legalAcceptances || []}
+              onLegalAccepted={({ user, record }) => {
+                setCurrentUser(user);
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        users: prev.users.map((u) => (u.id === user.id ? user : u)),
+                        legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                      }
+                    : prev
+                );
+              }}
+              onLegalMarkedRead={(rec) =>
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        legalAcceptances: (prev.legalAcceptances || []).map((r) =>
+                          r.id === rec.id ? rec : r
+                        ),
+                      }
+                    : prev
+                )
               }
+              onBrandAboutUpdated={(ba) => {
+                setPublicBrandAbout(ba);
+                setData((prev) => (prev ? { ...prev, brandAbout: ba } : prev));
+              }}
               onStudioAdded={(st) =>
                 setData((prev) =>
                   prev && !prev.studios.some((s) => s.id === st.id)
@@ -1125,6 +1275,19 @@ export default function App() {
               bookings={data.bookings}
               schedules={data.schedules}
               reviews={data.reviews || []}
+              brandName={data.brandAbout?.brandName}
+              onLegalAccepted={({ user, record }) => {
+                setCurrentUser(user);
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        users: prev.users.map((u) => (u.id === user.id ? user : u)),
+                        legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                      }
+                    : prev
+                );
+              }}
               onBookingCreated={(bk) =>
                 setData((prev) =>
                   prev && !prev.bookings.some((x) => x.id === bk.id)
@@ -1209,13 +1372,13 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'exercises' && (
+          {activeTab === 'exercises' && currentUser.role !== 'client' && (
             <ExercisesLibraryView
               currentUser={currentUser}
               exercises={data.exercises}
               programs={data.programs}
               clients={data.clients}
-              readOnly={currentUser.role === 'client'}
+              readOnly={false}
               onExerciseAdded={(ex) =>
                 setData((prev) => {
                   if (!prev) return prev;
@@ -1511,6 +1674,7 @@ export default function App() {
 
           {activeTab === 'notifications' && (
             <NotificationsCenterView
+              currentUser={currentUser}
               studios={data.studios}
               clients={data.clients}
               bookings={data.bookings}
@@ -1521,6 +1685,32 @@ export default function App() {
               messagingSettings={data.messagingSettings}
               messengerMessages={data.messengerMessages || []}
               birthdayAutomationEnabled={data.birthdayAutomationEnabled}
+              legalAcceptances={data.legalAcceptances || []}
+              brandName={data.brandAbout?.brandName}
+              onLegalAccepted={({ user, record }) => {
+                setCurrentUser(user);
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        users: prev.users.map((u) => (u.id === user.id ? user : u)),
+                        legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                      }
+                    : prev
+                );
+              }}
+              onLegalMarkedRead={(rec) =>
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        legalAcceptances: (prev.legalAcceptances || []).map((r) =>
+                          r.id === rec.id ? rec : r
+                        ),
+                      }
+                    : prev
+                )
+              }
               onBirthdayAutomationToggle={(enabled) =>
                 setData((prev) =>
                   prev ? { ...prev, birthdayAutomationEnabled: enabled } : prev
@@ -1566,7 +1756,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'trainer_portal' && (
+          {activeTab === 'trainer_portal' && currentUser.role !== 'admin' && currentUser.role !== 'client' && (
             <TrainerMobilePortalView
               currentUser={currentUser}
               studios={data.studios}
@@ -1580,6 +1770,19 @@ export default function App() {
               clientSubscriptions={data.clientSubscriptions}
               trainerPosts={data.trainerPosts || []}
               reviews={data.reviews || []}
+              brandName={data.brandAbout?.brandName}
+              onLegalAccepted={({ user, record }) => {
+                setCurrentUser(user);
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        users: prev.users.map((u) => (u.id === user.id ? user : u)),
+                        legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                      }
+                    : prev
+                );
+              }}
               scaleDevice={data.equipment.find((d) => d.type === 'xiaomi_scale')}
               onDeviceUpdated={(dev) =>
                 setData((prev) =>
@@ -1781,7 +1984,7 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'client_portal' && (
+          {activeTab === 'client_portal' && currentUser.role !== 'admin' && currentUser.role !== 'trainer' && (
             <ClientMobilePortalView
               currentUser={currentUser}
               studios={data.studios}
@@ -1842,6 +2045,18 @@ export default function App() {
                     : prev
                 )
               }
+              onLegalAccepted={({ user, record }) => {
+                setCurrentUser(user);
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        users: prev.users.map((u) => (u.id === user.id ? user : u)),
+                        legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                      }
+                    : prev
+                );
+              }}
             />
           )}
         </main>
@@ -1875,6 +2090,7 @@ export default function App() {
           users={data.users}
           studios={data.studios}
           clientProfile={data.clients.find((c) => c.userId === currentUser.id)}
+          brandAbout={data.brandAbout}
           theme={theme}
           styleTheme={styleTheme}
           bgImage={bgImage}
@@ -1901,6 +2117,10 @@ export default function App() {
                 : prev
             )
           }
+          onBrandAboutUpdated={(ba) => {
+            setPublicBrandAbout(ba);
+            setData((prev) => (prev ? { ...prev, brandAbout: ba } : prev));
+          }}
           onUserCreated={(u) =>
             setData((prev) => (prev ? { ...prev, users: [...prev.users, u] } : prev))
           }
@@ -1915,12 +2135,55 @@ export default function App() {
             )
           }
           onPushPermissionChange={setPushPermission}
+          onLegalAccepted={({ user, record }) => {
+            setCurrentUser(user);
+            setData((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    users: prev.users.map((u) => (u.id === user.id ? user : u)),
+                    legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                  }
+                : prev
+            );
+          }}
           onClose={() => setShowSettings(false)}
         />
       )}
 
-      {/* First-login Staff Push Notification Permission Prompt */}
-      {showStaffPushPrompt && isStaffRole(currentUser.role) && (
+      {/* Mandatory First-Login Legal Agreements & Read Confirmation Modal (Admin, Trainer, Client) */}
+      {(userNeedsLegalAcceptance(currentUser) || showLegalModal) && (
+        <LegalAgreementsModal
+          role={currentUser.role}
+          currentUser={currentUser}
+          mandatoryMode={userNeedsLegalAcceptance(currentUser)}
+          brandName={data.brandAbout?.brandName}
+          onAccepted={({ user, record }) => {
+            setCurrentUser(user);
+            setShowLegalModal(false);
+            setLegalSuccessNotice(
+              `Юридические соглашения приняты (${record.readConfirmedAt}). Подтверждение ознакомления отправлено владельцу студии.`
+            );
+            setData((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    users: prev.users.map((item) => (item.id === user.id ? user : item)),
+                    legalAcceptances: [record, ...(prev.legalAcceptances || [])],
+                  }
+                : prev
+            );
+          }}
+          onClose={() => {
+            if (!userNeedsLegalAcceptance(currentUser)) {
+              setShowLegalModal(false);
+            }
+          }}
+        />
+      )}
+
+      {/* First-login Staff Push Notification Permission Prompt (after Legal Agreements accepted) */}
+      {showStaffPushPrompt && isStaffRole(currentUser.role) && !userNeedsLegalAcceptance(currentUser) && (
         <StaffPushPromptModal
           user={currentUser}
           onPermissionUpdated={(perm) => setPushPermission(perm)}

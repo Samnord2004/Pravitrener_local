@@ -1106,7 +1106,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                 {/* B05 + Functional Indices */}
                 <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
                   <div className="p-3 rounded-lg bg-slate-50 dark:bg-slate-800/50">
-                    <div className="text-[11px] text-slate-500">Давление (B05)</div>
+                    <div className="text-[11px] text-slate-500">Давление (тонометр)</div>
                     <div className="font-mono text-base font-bold tabular-nums mt-0.5">
                       {latestAnthro.bpSys}/{latestAnthro.bpDia}
                     </div>
@@ -1603,7 +1603,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
               <h3 className="font-display text-lg font-semibold">
                 {editingAnthroId
                   ? 'Редактировать замер антропометрии'
-                  : 'Замер роста и Mi Body Composition Scale 2 + B05'}
+                  : 'Замер роста, веса и давления (тонометр)'}
               </h3>
               <div className="flex flex-wrap items-center gap-2">
                 {liveSensors.scale.rawWeightKg !== null && (

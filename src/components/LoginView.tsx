@@ -1,38 +1,45 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import {
   Lock,
   ArrowRight,
-  Smartphone,
   CalendarPlus,
   Mail,
   KeyRound,
   ArrowLeft,
+  Smartphone,
+  Scale,
 } from 'lucide-react';
-import type { UserAccount } from '../types';
+import type { BrandAboutInfo, UserAccount } from '../types';
 import { apiRequest, setAuthToken } from '../utils/api';
+import { DEFAULT_BRAND_ABOUT } from '../utils/brandAbout';
 import { PWAInstallButton } from './PWAInstallButton';
+import { AndroidAppsModal } from './AndroidAppsModal';
+import { LegalAgreementsModal } from './LegalAgreementsModal';
+import {
+  applyAndroidAppManifestToDocument,
+  getActiveAndroidAppFlavor,
+  getAndroidAppDefinition,
+} from '../utils/androidApps';
 
 interface LoginViewProps {
   onOpenPublicBooking: () => void;
   onSuccess: (user: UserAccount) => void;
   sessionNotice?: string;
+  brandAbout?: BrandAboutInfo;
 }
-
-const DEMO_ACCOUNTS = [
-  { roleLabel: 'Владелец сети', login: 'owner', pwd: 'owner123', desc: 'Все студии, аналитика, настройки, права' },
-  { roleLabel: 'Администратор', login: 'admin', pwd: 'admin123', desc: 'Расписание, услуги, акции, рассылки, касса' },
-  { roleLabel: 'Тренер (PWA)', login: 'trainer', pwd: 'trainer123', desc: 'Клиенты (без копирования), программы, блог, график' },
-  { roleLabel: 'Клиент (PWA)', login: 'client', pwd: 'client123', desc: 'Запись онлайн, прогресс, абонемент, офлайн' },
-];
 
 export const LoginView: React.FC<LoginViewProps> = ({
   onOpenPublicBooking,
   onSuccess,
   sessionNotice,
+  brandAbout,
 }) => {
+  const [publicBrand, setPublicBrand] = useState<BrandAboutInfo>(
+    brandAbout || DEFAULT_BRAND_ABOUT
+  );
   const [mode, setMode] = useState<'login' | 'reset'>('login');
-  const [login, setLogin] = useState('owner');
-  const [password, setPassword] = useState('owner123');
+  const [login, setLogin] = useState('');
+  const [password, setPassword] = useState('');
   const [emailCode, setEmailCode] = useState('');
   const [needsEmailCode, setNeedsEmailCode] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -44,6 +51,35 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const [resetCodeSent, setResetCodeSent] = useState(false);
   const [resetCode, setResetCode] = useState('');
   const [resetNewPassword, setResetNewPassword] = useState('');
+  const [showAndroidModal, setShowAndroidModal] = useState(false);
+  const [showLegalModal, setShowLegalModal] = useState(false);
+  const activeAndroidFlavor = getActiveAndroidAppFlavor();
+  const activeAndroidApp = getAndroidAppDefinition(activeAndroidFlavor);
+
+  useEffect(() => {
+    applyAndroidAppManifestToDocument(activeAndroidFlavor, publicBrand.brandName);
+  }, [activeAndroidFlavor, publicBrand.brandName]);
+
+  useEffect(() => {
+    if (brandAbout) {
+      setPublicBrand(brandAbout);
+      return;
+    }
+    let cancelled = false;
+    fetch('/api/public/brand-about')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res) => {
+        if (!cancelled && res && typeof res === 'object') {
+          setPublicBrand({ ...DEFAULT_BRAND_ABOUT, ...res });
+        }
+      })
+      .catch(() => {
+        // fallback to default
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [brandAbout]);
 
   const performLogin = async (l: string, p: string, code?: string) => {
     setError('');
@@ -74,15 +110,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     await performLogin(login, password, needsEmailCode ? emailCode : undefined);
-  };
-
-  const quickLogin = async (l: string, p: string) => {
-    setMode('login');
-    setLogin(l);
-    setPassword(p);
-    setNeedsEmailCode(false);
-    setEmailCode('');
-    await performLogin(l, p);
   };
 
   const handleRequestResetCode = async (e: React.FormEvent) => {
@@ -142,6 +169,16 @@ export const LoginView: React.FC<LoginViewProps> = ({
     }
   };
 
+  const logoSrc = publicBrand.logoUrl || DEFAULT_BRAND_ABOUT.logoUrl!;
+  const heroBgSrc = publicBrand.homeHeroImageUrl || DEFAULT_BRAND_ABOUT.homeHeroImageUrl!;
+  const heroBadge = publicBrand.homeBadge || DEFAULT_BRAND_ABOUT.homeBadge!;
+  const heroTitle = publicBrand.homeTitle || DEFAULT_BRAND_ABOUT.homeTitle!;
+  const heroSubtitle = publicBrand.homeSubtitle || DEFAULT_BRAND_ABOUT.homeSubtitle!;
+  const highlights =
+    publicBrand.homeHighlights && publicBrand.homeHighlights.length > 0
+      ? publicBrand.homeHighlights
+      : DEFAULT_BRAND_ABOUT.homeHighlights || [];
+
   return (
     <div className="min-h-screen flex flex-col st-canvas">
       <div className="st-ornament-bar" />
@@ -149,8 +186,8 @@ export const LoginView: React.FC<LoginViewProps> = ({
         {/* Left Hero Visual */}
         <div className="lg:col-span-7 relative min-h-[280px] overflow-hidden st-hero-gradient flex flex-col justify-between p-8 lg:p-12">
           <img
-            src="/assets/aistudio/IMG_6064_172a7fc2.JPG"
-            alt="Дракон — символ силы и баланса ЭТАЛОН ПРАВИЛО"
+            src={heroBgSrc}
+            alt={publicBrand.brandName || 'ЭТАЛОН ПРАВИЛО'}
             referrerPolicy="no-referrer"
             className="absolute inset-0 w-full h-full object-cover object-center opacity-70"
           />
@@ -159,9 +196,9 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <div className="relative z-10 flex flex-wrap items-center justify-between gap-4">
             <div className="h-11 rounded-xl bg-white/95 px-3 py-1.5 flex items-center shadow-sm shrink-0">
               <img
-                src="/assets/aistudio/logo_full_etalon.png"
-                alt="ЭТАЛОН ПРАВИЛО"
-                className="h-full w-auto object-contain"
+                src={logoSrc}
+                alt={publicBrand.brandName || 'ЭТАЛОН ПРАВИЛО'}
+                className="h-full w-auto max-w-[200px] object-contain"
               />
             </div>
             <div className="flex items-center gap-2">
@@ -179,29 +216,31 @@ export const LoginView: React.FC<LoginViewProps> = ({
 
           <div className="relative z-10 max-w-xl mt-12">
             <p className="text-xs font-mono uppercase tracking-widest text-amber-300 mb-3">
-              Сеть студий биомеханической коррекции
+              {heroBadge}
             </p>
             <h1 className="font-display text-3xl sm:text-4xl lg:text-5xl font-bold text-white leading-tight [text-wrap:balance]">
-              Управление студией, запись и живая телеметрия тренировок
+              {heroTitle}
             </h1>
             <p className="mt-4 text-sm sm:text-base text-white/85 leading-relaxed max-w-lg">
-              Единая платформа для владельца сети, администраторов, тренеров и клиентов с поддержкой BLE-датчиков MYOblue, Wahoo TICKR FIT, тонометра B05, весов Xiaomi Mi Scale 2 и тензодатчиков ESP32.
+              {heroSubtitle}
             </p>
 
-            <div className="mt-8 grid grid-cols-3 gap-6 pt-6 border-t border-white/15">
-              <div>
-                <div className="font-mono text-2xl font-bold text-white tabular-nums">3</div>
-                <div className="text-xs text-white/80 mt-1">Студии в сети</div>
+            {highlights.length > 0 && (
+              <div
+                className={`mt-8 grid gap-6 pt-6 border-t border-white/15 ${
+                  highlights.length >= 3 ? 'grid-cols-3' : highlights.length === 2 ? 'grid-cols-2' : 'grid-cols-1'
+                }`}
+              >
+                {highlights.map((hl, idx) => (
+                  <div key={`${hl.value}-${idx}`}>
+                    <div className="font-mono text-2xl font-bold text-white tabular-nums">
+                      {hl.value}
+                    </div>
+                    <div className="text-xs text-white/80 mt-1">{hl.label}</div>
+                  </div>
+                ))}
               </div>
-              <div>
-                <div className="font-mono text-2xl font-bold text-white tabular-nums">5 BLE</div>
-                <div className="text-xs text-white/80 mt-1">Датчиков в реальном времени</div>
-              </div>
-              <div>
-                <div className="font-mono text-2xl font-bold text-white tabular-nums">PWA + ПК</div>
-                <div className="text-xs text-white/80 mt-1">Веб, десктоп и домен</div>
-              </div>
-            </div>
+            )}
           </div>
         </div>
 
@@ -210,7 +249,33 @@ export const LoginView: React.FC<LoginViewProps> = ({
           <div className="w-full max-w-md space-y-6">
             {mode === 'login' ? (
               <>
-                <div>
+                <div className="space-y-2">
+                  {activeAndroidApp && (
+                    <div className="flex items-center gap-2.5 p-2.5 rounded-xl st-surface-muted border st-border">
+                      <img
+                        src={activeAndroidApp.iconUrl}
+                        alt={activeAndroidApp.title}
+                        className="w-9 h-9 rounded-lg border st-border shrink-0"
+                      />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-xs font-semibold truncate">
+                          {activeAndroidApp.title}
+                        </div>
+                        <div className="text-[11px] st-muted truncate">
+                          Android-версия · {activeAndroidApp.roleLabel}
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          window.location.href = '/';
+                        }}
+                        className="text-[11px] st-accent-text hover:underline shrink-0 cursor-pointer"
+                      >
+                        Сменить
+                      </button>
+                    </div>
+                  )}
                   <h2 className="font-display text-2xl font-bold tracking-tight">Вход в систему</h2>
                 </div>
 
@@ -227,14 +292,25 @@ export const LoginView: React.FC<LoginViewProps> = ({
                         setNeedsEmailCode(false);
                       }}
                       required
-                      placeholder="owner / email@etalon-pravilo.ru"
+                      placeholder="Логин или E-mail"
                       className="w-full px-3.5 py-2.5 text-sm rounded-lg border st-border st-surface focus:outline-none focus:ring-2 focus:ring-cyan-600"
                     />
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between mb-1.5">
-                      <label className="block text-xs font-medium">Пароль</label>
+                    <label className="block text-xs font-medium mb-1.5">Пароль</label>
+                    <div className="relative">
+                      <input
+                        type="password"
+                        value={password}
+                        onChange={(e) => setPassword(e.target.value)}
+                        required
+                        placeholder="••••••••"
+                        className="w-full px-3.5 py-2.5 text-sm rounded-lg border st-border st-surface focus:outline-none focus:ring-2 focus:ring-cyan-600 pr-10"
+                      />
+                      <Lock className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
+                    </div>
+                    <div className="mt-1.5 flex justify-end">
                       <button
                         type="button"
                         onClick={() => {
@@ -247,17 +323,6 @@ export const LoginView: React.FC<LoginViewProps> = ({
                       >
                         Забыли пароль? Сброс через E-mail
                       </button>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="password"
-                        value={password}
-                        onChange={(e) => setPassword(e.target.value)}
-                        required
-                        placeholder="••••••••"
-                        className="w-full px-3.5 py-2.5 text-sm rounded-lg border st-border st-surface focus:outline-none focus:ring-2 focus:ring-cyan-600 pr-10"
-                      />
-                      <Lock className="w-4 h-4 text-slate-400 absolute right-3.5 top-3" />
                     </div>
                   </div>
 
@@ -299,32 +364,26 @@ export const LoginView: React.FC<LoginViewProps> = ({
                   </button>
                 </form>
 
-                <div className="pt-5 border-t st-border">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium st-muted">Быстрый вход по роли</span>
-                    <span className="text-xs font-mono st-muted">логин / пароль</span>
+                <div className="pt-3 border-t st-border space-y-2.5">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="text-xs st-muted">Мобильные версии для Android:</span>
+                    <button
+                      type="button"
+                      onClick={() => setShowAndroidModal(true)}
+                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface-muted text-xs font-medium hover:opacity-90 cursor-pointer whitespace-nowrap"
+                    >
+                      <Smartphone className="w-3.5 h-3.5 st-accent-text" />
+                      <span>Админ / Тренер / Клиент</span>
+                    </button>
                   </div>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-                    {DEMO_ACCOUNTS.map((acc) => (
-                      <button
-                        key={acc.login}
-                        type="button"
-                        onClick={() => quickLogin(acc.login, acc.pwd)}
-                        className="text-left p-3 rounded-lg border st-border st-surface hover:opacity-90 transition-colors cursor-pointer"
-                      >
-                        <div className="flex items-center justify-between gap-2">
-                          <span className="text-xs font-semibold">{acc.roleLabel}</span>
-                          {(acc.login === 'client' || acc.login === 'trainer') && (
-                            <Smartphone className="w-3.5 h-3.5 st-accent-text shrink-0" />
-                          )}
-                        </div>
-                        <div className="text-[11px] font-mono st-muted mt-0.5">
-                          {acc.login} / {acc.pwd}
-                        </div>
-                        <div className="text-[11px] st-muted mt-1 line-clamp-1">{acc.desc}</div>
-                      </button>
-                    ))}
-                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowLegalModal(true)}
+                    className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-lg border st-border st-surface-muted text-xs st-muted hover:opacity-90 cursor-pointer"
+                  >
+                    <Scale className="w-3.5 h-3.5 st-accent-text" />
+                    <span>Юридические соглашения и политика конфиденциальности</span>
+                  </button>
                 </div>
               </>
             ) : (
@@ -435,6 +494,27 @@ export const LoginView: React.FC<LoginViewProps> = ({
           </div>
         </div>
       </div>
+      {showAndroidModal && (
+        <AndroidAppsModal
+          brandName={publicBrand.brandName}
+          showApkInstructions={false}
+          onClose={() => setShowAndroidModal(false)}
+        />
+      )}
+      {showLegalModal && (
+        <LegalAgreementsModal
+          role={
+            activeAndroidFlavor === 'admin'
+              ? 'admin'
+              : activeAndroidFlavor === 'trainer'
+              ? 'trainer'
+              : 'client'
+          }
+          mandatoryMode={false}
+          brandName={publicBrand.brandName}
+          onClose={() => setShowLegalModal(false)}
+        />
+      )}
     </div>
   );
 };

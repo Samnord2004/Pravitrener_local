@@ -1,17 +1,21 @@
 {
   "name": "etalon-pravilo-desktop",
   "version": "1.2.0",
-  "description": "Десктопный клиент и автономная станция студии ЭТАЛОН ПРАВИЛО (Windows / macOS / Linux)",
+  "description": "Десктопный клиент и автономная станция студии ЭТАЛОН ПРАВИЛО (macOS M1+ / Windows .exe)",
   "main": "main.cjs",
   "scripts": {
+    "prepare": "node prepare-bundle.mjs",
     "start": "electron .",
-    "dist:win": "electron-builder --win nsis",
-    "dist:mac": "electron-builder --mac dmg",
-    "dist:linux": "electron-builder --linux AppImage"
+    "dist:mac": "node prepare-bundle.mjs && electron-builder --mac --arm64",
+    "dist:mac:universal": "node prepare-bundle.mjs && electron-builder --mac --universal",
+    "dist:win": "node prepare-bundle.mjs && electron-builder --win --x64",
+    "dist:all": "node prepare-bundle.mjs && electron-builder --mac --arm64 --win --x64",
+    "dist:linux": "node prepare-bundle.mjs && electron-builder --linux AppImage"
   },
   "build": {
     "appId": "ru.etalonpravilo.desktop",
     "productName": "ЭТАЛОН ПРАВИЛО",
+    "artifactName": "EtalonPravilo-${version}-${os}-${arch}.${ext}",
     "directories": {
       "output": "../release-desktop"
     },
@@ -19,14 +23,69 @@
       "main.cjs",
       "preload.cjs"
     ],
-    "win": {
-      "target": ["nsis", "portable"]
-    },
+    "extraResources": [
+      {
+        "from": "bundle",
+        "to": "bundle"
+      }
+    ],
     "mac": {
-      "target": ["dmg"]
+      "category": "public.app-category.healthcare-fitness",
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "arm64"
+          ]
+        }
+      ],
+      "extendInfo": {
+        "NSBluetoothAlwaysUsageDescription": "Приложение использует Bluetooth для подключения весов, пульсометра, тонометра, миодатчиков и тензодатчиков конечностей.",
+        "NSBluetoothPeripheralUsageDescription": "Доступ к Bluetooth необходим для работы телеметрии студии.",
+        "NSCameraUsageDescription": "Доступ к камере используется для фотооценки осанки клиентов."
+      }
+    },
+    "dmg": {
+      "title": "ЭТАЛОН ПРАВИЛО"
+    },
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "ЭТАЛОН ПРАВИЛО",
+      "installerLanguages": [
+        "ru_RU",
+        "en_US"
+      ]
     },
     "linux": {
-      "target": ["AppImage", "deb"]
+      "target": [
+        "AppImage",
+        "deb"
+      ]
     }
   },
   "devDependencies": {

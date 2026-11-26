@@ -13,15 +13,32 @@ NODE_ENV=production SESSION_SECRET="$(openssl rand -hex 32)" npm start
 - **Caddy (автоматический SSL):** установите Caddy и укажите `deploy/Caddyfile`.
 - **Nginx + Certbot:** скопируйте `deploy/nginx-domain.conf` и выпустите сертификат `certbot --nginx -d studio.yourdomain.ru`.
 
-## 3. Сборка десктопного приложения (Windows / macOS / Linux)
-В папке `desktop/`:
+## 3. Сборка автономного установщика для ПК (macOS M1+ и Windows .exe)
+Установщик включает встроенный сервер и локальную базу данных в папке пользователя (отдельная установка Node.js на компьютер студии не требуется).
+
+Первоначальная установка зависимостей Electron:
 ```bash
-cd desktop
-npm install --package-lock-only=false
-# Запуск подключённого к домену студии десктоп-клиента:
-STUDIO_SERVER_URL="https://studio.yourdomain.ru" npx electron .
+npm run desktop:install
 ```
-Для сборки установщика `.exe` / `.dmg` / `.AppImage` используйте `desktop/package-desktop.json` с `electron-builder`.
+
+- **macOS (Apple Silicon M1 / M2 / M3 / M4, `arm64` — `.dmg` и `.zip`):**
+```bash
+npm run desktop:mac
+# или Universal (M1+ arm64 + Intel x64):
+npm run desktop:mac:universal
+```
+- **Windows 10 / 11 (`x64` — установщик `.exe` NSIS и портативный `.exe`):**
+```bash
+npm run desktop:win
+```
+Готовые установщики сохраняются в папку `release-desktop/`:
+- `EtalonPravilo-1.2.0-mac-arm64.dmg` (macOS M1 и новее)
+- `EtalonPravilo-1.2.0-win-x64.exe` (Windows установщик)
+
+Для запуска десктоп-клиента с подключением к удалённому домену студии:
+```bash
+STUDIO_SERVER_URL="https://studio.yourdomain.ru" npm --prefix desktop start
+```
 
 ## 4. Простое обновление
 - В интерфейсе владельца (**Настройки → Обновления, Десктоп и Домен**) нажмите **«Скачать резервную копию БД»**, затем **«Проверить обновления»** и **«Установить обновление»**.
