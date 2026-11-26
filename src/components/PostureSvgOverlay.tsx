@@ -1,5 +1,6 @@
 import React from 'react';
 import type { PostureAngleMeasurement, PosturePoint } from '../types';
+import { LASER_HORIZON_NAMES, normalizeLaserHorizons } from '../utils/postureGeometry';
 
 interface PostureSvgOverlayProps {
   laserEnabled: boolean;
@@ -11,7 +12,20 @@ interface PostureSvgOverlayProps {
   pendingPoints?: PosturePoint[];
   pendingColor?: string;
   interactive?: boolean;
+  activeDragTarget?: {
+    measurementId?: string;
+    pending?: boolean;
+    horizonIdx?: number;
+    pointIdx: number;
+  } | null;
   onStartDragPlumb?: (e: React.PointerEvent<SVGElement>) => void;
+  onStartDragHorizon?: (horizonIdx: number, e: React.PointerEvent<SVGElement>) => void;
+  onStartDragPoint?: (
+    measurementId: string,
+    pointIdx: number,
+    e: React.PointerEvent<SVGElement>
+  ) => void;
+  onStartDragPendingPoint?: (pointIdx: number, e: React.PointerEvent<SVGElement>) => void;
 }
 
 function buildJointArcPath(a: PosturePoint, b: PosturePoint, c: PosturePoint, radius = 6.5): string {
@@ -29,7 +43,7 @@ function buildJointArcPath(a: PosturePoint, b: PosturePoint, c: PosturePoint, ra
   return `M ${x1.toFixed(2)} ${y1.toFixed(2)} A ${radius} ${radius} 0 0 ${sweepFlag} ${x2.toFixed(2)} ${y2.toFixed(2)}`;
 }
 
-const HORIZON_LABELS = ['L1 Голова', 'L2 Плечи', 'L3 Таз', 'L4 Колени'];
+const HORIZON_COLORS = ['#38bdf8', '#2dd4bf', '#4ade80', '#fbbf24', '#fb7185'];
 
 export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
   laserEnabled,
@@ -41,10 +55,15 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
   pendingPoints = [],
   pendingColor = '#22d3ee',
   interactive = false,
+  activeDragTarget = null,
   onStartDragPlumb,
+  onStartDragHorizon,
+  onStartDragPoint,
+  onStartDragPendingPoint,
 }) => {
   const safePlumbX = Math.max(5, Math.min(95, laserPlumbXPct || 50));
   const tilt = Number.isFinite(laserTiltDeg) ? laserTiltDeg : 0;
+  const horizons = normalizeLaserHorizons(laserHorizonsPct);
 
   return (
     <svg
@@ -93,40 +112,110 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
       {/* Laser Level Vertical Plumb & Horizontal Lines */}
       {laserEnabled && (
         <g transform={tilt !== 0 ? `rotate(${tilt} ${safePlumbX} 50)` : undefined}>
-          {/* Horizontal laser reference rays */}
-          {laserHorizonsPct.map((hy, idx) => {
+          {/* Horizontal laser reference rays (Голова, Шея, Плечи, Таз, Ноги) */}
+          {horizons.map((hy, idx) => {
             const safeY = Math.max(4, Math.min(96, hy));
+            const hColor = HORIZON_COLORS[idx] || '#ef4444';
+            const hLabel = LASER_HORIZON_NAMES[idx] || `L${idx + 1}`;
+            const isDraggingH = activeDragTarget?.horizonIdx === idx;
             return (
               <g key={`lh-${idx}`}>
+                {/* Dark contrast backing so line stays crisp on bright or light backgrounds */}
                 <line
                   x1={-10}
                   y1={safeY}
                   x2={110}
                   y2={safeY}
-                  stroke="#ef4444"
-                  strokeWidth={0.42}
-                  strokeDasharray="2.2 1.2"
-                  opacity={0.9}
-                  filter="url(#laserGlow)"
+                  stroke="rgba(15, 23, 42, 0.58)"
+                  strokeWidth={isDraggingH ? 1.4 : 1.05}
                 />
+                {/* Crisp horizontal level line */}
+                <line
+                  x1={-10}
+                  y1={safeY}
+                  x2={110}
+                  y2={safeY}
+                  stroke={hColor}
+                  strokeWidth={isDraggingH ? 0.72 : 0.5}
+                  strokeDasharray="2.4 1.1"
+                  opacity={0.96}
+                />
+                {/* Left level label badge */}
                 <rect
                   x={1.2}
                   y={Math.max(1, safeY - 3.3)}
                   width={18.5}
-                  height={2.8}
+                  height={2.9}
                   rx={0.7}
-                  fill="rgba(15, 23, 42, 0.78)"
+                  fill="rgba(15, 23, 42, 0.88)"
+                  stroke={hColor}
+                  strokeWidth={0.25}
                 />
                 <text
                   x={2.1}
-                  y={Math.max(3, safeY - 1.3)}
-                  fill="#fca5a5"
+                  y={Math.max(3, safeY - 1.25)}
+                  fill={hColor}
                   fontSize="2.1"
                   fontFamily="ui-monospace, monospace"
-                  fontWeight="600"
+                  fontWeight="700"
                 >
-                  {HORIZON_LABELS[idx] || `L${idx + 1}`}
+                  {hLabel}
                 </text>
+
+                {/* Interactive vertical drag handles (left badge + right grip) */}
+                {interactive && onStartDragHorizon && (
+                  <>
+                    <rect
+                      x={1}
+                      y={Math.max(0.5, safeY - 4)}
+                      width={20}
+                      height={5}
+                      fill="transparent"
+                      style={{ touchAction: 'none' }}
+                      className="pointer-events-auto cursor-ns-resize"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onStartDragHorizon(idx, e);
+                      }}
+                    />
+                    <rect
+                      x={91.5}
+                      y={safeY - 1.6}
+                      width={7}
+                      height={3.2}
+                      rx={1.2}
+                      fill="rgba(15, 23, 42, 0.9)"
+                      stroke={hColor}
+                      strokeWidth={0.4}
+                      style={{ touchAction: 'none' }}
+                      className="pointer-events-auto cursor-ns-resize"
+                      onClick={(e) => e.stopPropagation()}
+                      onPointerDown={(e) => {
+                        e.stopPropagation();
+                        e.preventDefault();
+                        onStartDragHorizon(idx, e);
+                      }}
+                    />
+                    <line
+                      x1={93.2}
+                      y1={safeY - 0.5}
+                      x2={96.8}
+                      y2={safeY - 0.5}
+                      stroke={hColor}
+                      strokeWidth={0.35}
+                    />
+                    <line
+                      x1={93.2}
+                      y1={safeY + 0.5}
+                      x2={96.8}
+                      y2={safeY + 0.5}
+                      stroke={hColor}
+                      strokeWidth={0.35}
+                    />
+                  </>
+                )}
               </g>
             );
           })}
@@ -183,9 +272,12 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
               fill="#ef4444"
               stroke="#ffffff"
               strokeWidth={0.5}
+              style={{ touchAction: 'none' }}
               className="pointer-events-auto cursor-ew-resize"
+              onClick={(e) => e.stopPropagation()}
               onPointerDown={(e) => {
                 e.stopPropagation();
+                e.preventDefault();
                 onStartDragPlumb(e);
               }}
             />
@@ -227,8 +319,50 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
                 stroke={col}
                 strokeWidth={0.68}
               />
-              <circle cx={p1.xPct} cy={p1.yPct} r={1.35} fill={col} stroke="#0f172a" strokeWidth={0.35} />
-              <circle cx={p2.xPct} cy={p2.yPct} r={1.35} fill={col} stroke="#0f172a" strokeWidth={0.35} />
+              {[p1, p2].map((pt, idx) => {
+                const isDragging =
+                  activeDragTarget?.measurementId === m.id &&
+                  activeDragTarget.pointIdx === idx;
+                return (
+                  <g key={`${m.id}-pt-${idx}`}>
+                    {isDragging && (
+                      <circle
+                        cx={pt.xPct}
+                        cy={pt.yPct}
+                        r={3.0}
+                        fill="none"
+                        stroke="#ffffff"
+                        strokeWidth={0.45}
+                        opacity={0.9}
+                      />
+                    )}
+                    <circle
+                      cx={pt.xPct}
+                      cy={pt.yPct}
+                      r={isDragging ? 1.85 : 1.45}
+                      fill={col}
+                      stroke={isDragging ? '#ffffff' : '#0f172a'}
+                      strokeWidth={isDragging ? 0.5 : 0.35}
+                    />
+                    {interactive && onStartDragPoint && (
+                      <circle
+                        cx={pt.xPct}
+                        cy={pt.yPct}
+                        r={3.4}
+                        fill="transparent"
+                        style={{ touchAction: 'none' }}
+                        className="pointer-events-auto cursor-grab active:cursor-grabbing"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onStartDragPoint(m.id, idx, e);
+                        }}
+                      />
+                    )}
+                  </g>
+                );
+              })}
               <rect
                 x={boxX}
                 y={boxY}
@@ -264,9 +398,51 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
               <line x1={a.xPct} y1={a.yPct} x2={b.xPct} y2={b.yPct} stroke={col} strokeWidth={0.65} />
               <line x1={b.xPct} y1={b.yPct} x2={c.xPct} y2={c.yPct} stroke={col} strokeWidth={0.65} />
               <path d={arcD} fill="none" stroke={col} strokeWidth={0.48} />
-              <circle cx={a.xPct} cy={a.yPct} r={1.25} fill={col} stroke="#0f172a" strokeWidth={0.35} />
-              <circle cx={b.xPct} cy={b.yPct} r={1.55} fill="#ffffff" stroke={col} strokeWidth={0.5} />
-              <circle cx={c.xPct} cy={c.yPct} r={1.25} fill={col} stroke="#0f172a" strokeWidth={0.35} />
+              {[a, b, c].map((pt, idx) => {
+                const isVertex = idx === 1;
+                const isDragging =
+                  activeDragTarget?.measurementId === m.id &&
+                  activeDragTarget.pointIdx === idx;
+                return (
+                  <g key={`${m.id}-jpt-${idx}`}>
+                    {isDragging && (
+                      <circle
+                        cx={pt.xPct}
+                        cy={pt.yPct}
+                        r={3.0}
+                        fill="none"
+                        stroke="#ffffff"
+                        strokeWidth={0.45}
+                        opacity={0.9}
+                      />
+                    )}
+                    <circle
+                      cx={pt.xPct}
+                      cy={pt.yPct}
+                      r={isDragging ? 1.9 : isVertex ? 1.6 : 1.3}
+                      fill={isVertex ? '#ffffff' : col}
+                      stroke={isVertex ? col : isDragging ? '#ffffff' : '#0f172a'}
+                      strokeWidth={isVertex || isDragging ? 0.5 : 0.35}
+                    />
+                    {interactive && onStartDragPoint && (
+                      <circle
+                        cx={pt.xPct}
+                        cy={pt.yPct}
+                        r={3.4}
+                        fill="transparent"
+                        style={{ touchAction: 'none' }}
+                        className="pointer-events-auto cursor-grab active:cursor-grabbing"
+                        onClick={(e) => e.stopPropagation()}
+                        onPointerDown={(e) => {
+                          e.stopPropagation();
+                          e.preventDefault();
+                          onStartDragPoint(m.id, idx, e);
+                        }}
+                      />
+                    )}
+                  </g>
+                );
+              })}
               <rect
                 x={boxX}
                 y={boxY}
@@ -308,28 +484,58 @@ export const PostureSvgOverlay: React.FC<PostureSvgOverlayProps> = ({
               strokeDasharray="1.2 0.8"
             />
           )}
-          {pendingPoints.map((pt, idx) => (
-            <g key={`pend-${idx}`}>
-              <circle
-                cx={pt.xPct}
-                cy={pt.yPct}
-                r={1.7}
-                fill={pendingColor}
-                stroke="#ffffff"
-                strokeWidth={0.45}
-              />
-              <text
-                x={pt.xPct + 2.2}
-                y={pt.yPct - 1.2}
-                fill="#ffffff"
-                fontSize="2.3"
-                fontFamily="ui-monospace, monospace"
-                fontWeight="700"
-              >
-                P{idx + 1}
-              </text>
-            </g>
-          ))}
+          {pendingPoints.map((pt, idx) => {
+            const isDragging =
+              Boolean(activeDragTarget?.pending) && activeDragTarget?.pointIdx === idx;
+            return (
+              <g key={`pend-${idx}`}>
+                {isDragging && (
+                  <circle
+                    cx={pt.xPct}
+                    cy={pt.yPct}
+                    r={3.1}
+                    fill="none"
+                    stroke="#ffffff"
+                    strokeWidth={0.45}
+                  />
+                )}
+                <circle
+                  cx={pt.xPct}
+                  cy={pt.yPct}
+                  r={isDragging ? 2.0 : 1.7}
+                  fill={pendingColor}
+                  stroke="#ffffff"
+                  strokeWidth={0.45}
+                />
+                <text
+                  x={pt.xPct + 2.2}
+                  y={pt.yPct - 1.2}
+                  fill="#ffffff"
+                  fontSize="2.3"
+                  fontFamily="ui-monospace, monospace"
+                  fontWeight="700"
+                >
+                  P{idx + 1}
+                </text>
+                {interactive && onStartDragPendingPoint && (
+                  <circle
+                    cx={pt.xPct}
+                    cy={pt.yPct}
+                    r={3.5}
+                    fill="transparent"
+                    style={{ touchAction: 'none' }}
+                    className="pointer-events-auto cursor-grab active:cursor-grabbing"
+                    onClick={(e) => e.stopPropagation()}
+                    onPointerDown={(e) => {
+                      e.stopPropagation();
+                      e.preventDefault();
+                      onStartDragPendingPoint(idx, e);
+                    }}
+                  />
+                )}
+              </g>
+            );
+          })}
         </g>
       )}
     </svg>

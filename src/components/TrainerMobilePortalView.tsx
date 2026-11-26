@@ -94,6 +94,7 @@ interface TrainerPortalProps {
   onUserUpdated?: (u: UserAccount) => void;
   onAnthropometryAdded?: (clientId: string, rec: AnthropometryRecord) => void;
   onAnthropometryUpdated?: (clientId: string, rec: AnthropometryRecord) => void;
+  onAnthropometryDeleted?: (clientId: string, recId: string) => void;
   onBookingUpdated: (b: Booking) => void;
   onExerciseAdded: (ex: Exercise) => void;
   onExerciseUpdated: (ex: Exercise) => void;
@@ -158,6 +159,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   onUserUpdated,
   onAnthropometryAdded,
   onAnthropometryUpdated,
+  onAnthropometryDeleted,
   onBookingUpdated,
   onExerciseAdded,
   onExerciseUpdated,
@@ -206,6 +208,32 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   const [scaleMsg, setScaleMsg] = useState('');
   const [scaleError, setScaleError] = useState(false);
   const [savingScaleAnthro, setSavingScaleAnthro] = useState(false);
+
+  // Edit / Delete Anthropometry Records state
+  const [editingAnthroRec, setEditingAnthroRec] = useState<AnthropometryRecord | null>(null);
+  const [editAnthroDate, setEditAnthroDate] = useState('');
+  const [editAnthroHBefore, setEditAnthroHBefore] = useState('');
+  const [editAnthroHAfter, setEditAnthroHAfter] = useState('');
+  const [editAnthroWeight, setEditAnthroWeight] = useState('');
+  const [editAnthroFat, setEditAnthroFat] = useState('');
+  const [editAnthroMuscle, setEditAnthroMuscle] = useState('');
+  const [editAnthroWater, setEditAnthroWater] = useState('');
+  const [editAnthroProtein, setEditAnthroProtein] = useState('');
+  const [editAnthroVisceral, setEditAnthroVisceral] = useState('');
+  const [editAnthroBone, setEditAnthroBone] = useState('');
+  const [editAnthroBmr, setEditAnthroBmr] = useState('');
+  const [editAnthroBodyAge, setEditAnthroBodyAge] = useState('');
+  const [editAnthroBodyScore, setEditAnthroBodyScore] = useState('');
+  const [editAnthroBpSys, setEditAnthroBpSys] = useState('');
+  const [editAnthroBpDia, setEditAnthroBpDia] = useState('');
+  const [editAnthroPulse, setEditAnthroPulse] = useState('');
+  const [editAnthroFlex, setEditAnthroFlex] = useState('');
+  const [editAnthroPain, setEditAnthroPain] = useState('');
+  const [editAnthroNotes, setEditAnthroNotes] = useState('');
+  const [editAnthroSaving, setEditAnthroSaving] = useState(false);
+  const [editAnthroError, setEditAnthroError] = useState('');
+  const [confirmDeleteAnthroId, setConfirmDeleteAnthroId] = useState<string | null>(null);
+  const [busyDeleteAnthroId, setBusyDeleteAnthroId] = useState<string | null>(null);
 
   // Programs Builder state
   const [programFilter, setProgramFilter] = useState<'mine' | 'all'>('mine');
@@ -551,6 +579,106 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
       setScaleMsg(`Рост после тренировки зафиксирован (${afterVal.toFixed(1)} см).`);
     } finally {
       setSavingScaleAnthro(false);
+    }
+  };
+
+  const openTrainerEditAnthro = (rec: AnthropometryRecord) => {
+    setEditingAnthroRec(rec);
+    setEditAnthroDate(rec.date || todayStr);
+    setEditAnthroHBefore(String(rec.heightBeforeCm));
+    setEditAnthroHAfter(rec.heightAfterCm !== undefined ? String(rec.heightAfterCm) : '');
+    setEditAnthroWeight(String(rec.weightKg));
+    setEditAnthroFat(String(rec.bodyFatPct));
+    setEditAnthroMuscle(String(rec.muscleMassKg));
+    setEditAnthroWater(String(rec.waterPct));
+    setEditAnthroProtein(String(rec.proteinPct ?? ''));
+    setEditAnthroVisceral(String(rec.visceralFatLevel ?? ''));
+    setEditAnthroBone(String(rec.boneMassKg ?? ''));
+    setEditAnthroBmr(String(rec.bmrKcal ?? ''));
+    setEditAnthroBodyAge(String(rec.bodyAgeYears ?? ''));
+    setEditAnthroBodyScore(String(rec.bodyScore ?? ''));
+    setEditAnthroBpSys(String(rec.bpSys));
+    setEditAnthroBpDia(String(rec.bpDia));
+    setEditAnthroPulse(String(rec.pulseRest));
+    setEditAnthroFlex(String(rec.flexibilityScore));
+    setEditAnthroPain(String(rec.painIndex));
+    setEditAnthroNotes(rec.notes || '');
+    setEditAnthroError('');
+  };
+
+  const handleTrainerSaveAnthro = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedClient || !editingAnthroRec) return;
+    setEditAnthroSaving(true);
+    setEditAnthroError('');
+    try {
+      const parsedBefore = Number(editAnthroHBefore);
+      const parsedAfter = editAnthroHAfter.trim() ? Number(editAnthroHAfter) : null;
+      const parsedWeight = Number(editAnthroWeight);
+      const payload: Record<string, unknown> = {
+        date: editAnthroDate,
+        heightBeforeCm: parsedBefore,
+        heightAfterCm: parsedAfter,
+        weightKg: parsedWeight,
+        bodyFatPct: Number(editAnthroFat),
+        muscleMassKg: Number(editAnthroMuscle),
+        waterPct: Number(editAnthroWater),
+        bpSys: Number(editAnthroBpSys),
+        bpDia: Number(editAnthroBpDia),
+        pulseRest: Number(editAnthroPulse),
+        flexibilityScore: Number(editAnthroFlex),
+        painIndex: Number(editAnthroPain),
+        notes: editAnthroNotes.trim(),
+      };
+      if (editAnthroProtein.trim()) payload.proteinPct = Number(editAnthroProtein);
+      if (editAnthroVisceral.trim()) payload.visceralFatLevel = Number(editAnthroVisceral);
+      if (editAnthroBone.trim()) payload.boneMassKg = Number(editAnthroBone);
+      if (editAnthroBmr.trim()) payload.bmrKcal = Number(editAnthroBmr);
+      if (editAnthroBodyAge.trim()) payload.bodyAgeYears = Number(editAnthroBodyAge);
+      if (editAnthroBodyScore.trim()) payload.bodyScore = Number(editAnthroBodyScore);
+
+      const updated = await apiRequest<AnthropometryRecord>(
+        `/api/clients/${selectedClient.id}/anthropometry/${editingAnthroRec.id}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify(payload),
+        }
+      );
+      onAnthropometryUpdated?.(selectedClient.id, updated);
+      setEditingAnthroRec(null);
+      setScaleError(false);
+      setScaleMsg(`Замер от ${updated.date} обновлён.`);
+    } catch (err) {
+      setEditAnthroError(
+        err instanceof Error ? err.message : 'Не удалось обновить замер'
+      );
+    } finally {
+      setEditAnthroSaving(false);
+    }
+  };
+
+  const handleTrainerDeleteAnthro = async (recId: string) => {
+    if (!selectedClient) return;
+    setBusyDeleteAnthroId(recId);
+    setScaleError(false);
+    try {
+      await apiRequest(
+        `/api/clients/${selectedClient.id}/anthropometry/${recId}`,
+        { method: 'DELETE' }
+      );
+      onAnthropometryDeleted?.(selectedClient.id, recId);
+      setConfirmDeleteAnthroId(null);
+      if (editingAnthroRec?.id === recId) {
+        setEditingAnthroRec(null);
+      }
+      setScaleMsg('Замер антропометрии удалён.');
+    } catch (err) {
+      setScaleError(true);
+      setScaleMsg(
+        err instanceof Error ? err.message : 'Не удалось удалить замер'
+      );
+    } finally {
+      setBusyDeleteAnthroId(null);
     }
   };
 
@@ -1367,6 +1495,121 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                               >
                                 {savingScaleAnthro ? 'Сохранение...' : 'Записать замер в карту'}
                               </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Anthropometry Measurements History (Edit & Delete) */}
+                        <div className="p-3.5 rounded-xl st-surface-muted border st-border space-y-2.5">
+                          <div className="flex items-center justify-between gap-2">
+                            <span className="text-xs font-semibold">
+                              История замеров ({selectedClient.anthropometry.length})
+                            </span>
+                            {latest && (
+                              <button
+                                type="button"
+                                onClick={() => openTrainerEditAnthro(latest)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border st-border st-surface text-[11px] font-medium cursor-pointer"
+                              >
+                                <Pencil className="w-3 h-3 st-accent-text" />
+                                <span>Редактировать последний</span>
+                              </button>
+                            )}
+                          </div>
+
+                          {selectedClient.anthropometry.length === 0 ? (
+                            <p className="text-xs st-muted">Замеров пока нет.</p>
+                          ) : (
+                            <div className="space-y-2 max-h-72 overflow-y-auto pr-1">
+                              {[...selectedClient.anthropometry]
+                                .slice()
+                                .reverse()
+                                .map((rec) => {
+                                  const delta =
+                                    rec.heightAfterCm !== undefined
+                                      ? +(rec.heightAfterCm - rec.heightBeforeCm).toFixed(1)
+                                      : null;
+                                  const isConfirming = confirmDeleteAnthroId === rec.id;
+                                  const isDeleting = busyDeleteAnthroId === rec.id;
+                                  return (
+                                    <div
+                                      key={rec.id}
+                                      className="p-2.5 rounded-lg st-surface border st-border flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs"
+                                    >
+                                      <div className="space-y-0.5 min-w-0">
+                                        <div className="flex flex-wrap items-center gap-2 font-mono">
+                                          <span className="font-semibold">{rec.date}</span>
+                                          <span>
+                                            Рост: {rec.heightBeforeCm.toFixed(1)}
+                                            {rec.heightAfterCm !== undefined
+                                              ? ` → ${rec.heightAfterCm.toFixed(1)}`
+                                              : ''}{' '}
+                                            см
+                                          </span>
+                                          {delta !== null && (
+                                            <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                              ({delta >= 0 ? `+${delta}` : delta})
+                                            </span>
+                                          )}
+                                        </div>
+                                        <div className="flex flex-wrap items-center gap-2.5 text-[11px] font-mono st-muted">
+                                          <span>{rec.weightKg} кг</span>
+                                          <span>Жир {rec.bodyFatPct}%</span>
+                                          <span>Мышцы {rec.muscleMassKg} кг</span>
+                                          <span>
+                                            АД {rec.bpSys}/{rec.bpDia} · {rec.pulseRest}
+                                          </span>
+                                        </div>
+                                        {rec.notes && (
+                                          <p className="text-[11px] st-muted truncate">
+                                            {rec.notes}
+                                          </p>
+                                        )}
+                                      </div>
+
+                                      <div className="flex items-center gap-1.5 shrink-0">
+                                        <button
+                                          type="button"
+                                          onClick={() => openTrainerEditAnthro(rec)}
+                                          className="inline-flex items-center gap-1 px-2 py-1 rounded-md border st-border hover:st-surface-muted text-[11px] font-medium cursor-pointer"
+                                          title="Редактировать замер"
+                                        >
+                                          <Pencil className="w-3 h-3 st-accent-text" />
+                                          <span>Изм.</span>
+                                        </button>
+                                        {isConfirming ? (
+                                          <div className="inline-flex items-center gap-1">
+                                            <button
+                                              type="button"
+                                              disabled={isDeleting}
+                                              onClick={() => handleTrainerDeleteAnthro(rec.id)}
+                                              className="px-2 py-1 rounded-md bg-rose-600 text-white text-[11px] font-semibold cursor-pointer disabled:opacity-50"
+                                            >
+                                              {isDeleting ? '...' : 'Удалить'}
+                                            </button>
+                                            <button
+                                              type="button"
+                                              disabled={isDeleting}
+                                              onClick={() => setConfirmDeleteAnthroId(null)}
+                                              className="px-2 py-1 rounded-md border st-border text-[11px] cursor-pointer"
+                                            >
+                                              Отмена
+                                            </button>
+                                          </div>
+                                        ) : (
+                                          <button
+                                            type="button"
+                                            onClick={() => setConfirmDeleteAnthroId(rec.id)}
+                                            className="p-1.5 rounded-md text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                                            title="Удалить замер"
+                                          >
+                                            <Trash2 className="w-3.5 h-3.5" />
+                                          </button>
+                                        )}
+                                      </div>
+                                    </div>
+                                  );
+                                })}
                             </div>
                           )}
                         </div>
@@ -2378,6 +2621,270 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
             statusMessage={trainerProfileMsg}
             onSave={handleSaveTrainerPublicProfile}
           />
+        </div>
+      )}
+
+      {/* Edit Anthropometry Record Modal */}
+      {editingAnthroRec && selectedClient && (
+        <div className="fixed inset-0 z-50 bg-slate-950/60 backdrop-blur-sm flex items-center justify-center p-2 sm:p-4">
+          <form
+            onSubmit={handleTrainerSaveAnthro}
+            className="w-full max-w-xl max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] rounded-2xl st-surface border st-border shadow-2xl flex flex-col overflow-hidden select-text"
+          >
+            <div className="px-5 py-4 border-b st-border flex items-center justify-between gap-3 shrink-0">
+              <div>
+                <h3 className="font-display text-base font-bold">
+                  Редактировать замер — {selectedClient.name}
+                </h3>
+                <p className="text-[11px] st-muted">
+                  Корректировка параметров антропометрии и Mi Scale 2
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setEditingAnthroRec(null)}
+                className="p-1.5 rounded-lg border st-border hover:st-surface-muted cursor-pointer"
+                aria-label="Закрыть"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            <div className="p-5 overflow-y-auto space-y-3 text-xs">
+              {editAnthroError && (
+                <div className="p-2.5 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300">
+                  {editAnthroError}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <label className="space-y-1">
+                  <span className="st-muted">Дата замера</span>
+                  <input
+                    type="date"
+                    required
+                    value={editAnthroDate}
+                    onChange={(e) => setEditAnthroDate(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Рост ДО (см)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={100}
+                    max={235}
+                    required
+                    value={editAnthroHBefore}
+                    onChange={(e) => setEditAnthroHBefore(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Рост ПОСЛЕ (см)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    min={100}
+                    max={235}
+                    placeholder="Пусто = без замера"
+                    value={editAnthroHAfter}
+                    onChange={(e) => setEditAnthroHAfter(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+              </div>
+
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <label className="space-y-1">
+                  <span className="st-muted">Вес (кг)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={editAnthroWeight}
+                    onChange={(e) => setEditAnthroWeight(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Жир (%)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={editAnthroFat}
+                    onChange={(e) => setEditAnthroFat(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Мышцы (кг)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={editAnthroMuscle}
+                    onChange={(e) => setEditAnthroMuscle(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Вода (%)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    required
+                    value={editAnthroWater}
+                    onChange={(e) => setEditAnthroWater(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Белок (%)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editAnthroProtein}
+                    onChange={(e) => setEditAnthroProtein(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Висц. жир</span>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editAnthroVisceral}
+                    onChange={(e) => setEditAnthroVisceral(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Кости (кг)</span>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={editAnthroBone}
+                    onChange={(e) => setEditAnthroBone(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">BMR (ккал)</span>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editAnthroBmr}
+                    onChange={(e) => setEditAnthroBmr(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Метаб. возр.</span>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editAnthroBodyAge}
+                    onChange={(e) => setEditAnthroBodyAge(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Оценка тела</span>
+                  <input
+                    type="number"
+                    step="1"
+                    value={editAnthroBodyScore}
+                    onChange={(e) => setEditAnthroBodyScore(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">АД верхн.</span>
+                  <input
+                    type="number"
+                    required
+                    value={editAnthroBpSys}
+                    onChange={(e) => setEditAnthroBpSys(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">АД нижн.</span>
+                  <input
+                    type="number"
+                    required
+                    value={editAnthroBpDia}
+                    onChange={(e) => setEditAnthroBpDia(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Пульс</span>
+                  <input
+                    type="number"
+                    required
+                    value={editAnthroPulse}
+                    onChange={(e) => setEditAnthroPulse(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Гибкость</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    required
+                    value={editAnthroFlex}
+                    onChange={(e) => setEditAnthroFlex(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+                <label className="space-y-1">
+                  <span className="st-muted">Боль (0-10)</span>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    required
+                    value={editAnthroPain}
+                    onChange={(e) => setEditAnthroPain(e.target.value)}
+                    className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted font-mono"
+                  />
+                </label>
+              </div>
+
+              <label className="block space-y-1">
+                <span className="st-muted">Примечание к замеру</span>
+                <textarea
+                  rows={2}
+                  value={editAnthroNotes}
+                  onChange={(e) => setEditAnthroNotes(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-lg border st-border st-surface-muted"
+                />
+              </label>
+            </div>
+
+            <div className="px-5 py-3.5 border-t st-border flex items-center justify-end gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => setEditingAnthroRec(null)}
+                className="px-3.5 py-2 rounded-lg border st-border text-xs font-medium cursor-pointer"
+              >
+                Отмена
+              </button>
+              <button
+                type="submit"
+                disabled={editAnthroSaving}
+                className="px-4 py-2 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer disabled:opacity-50"
+              >
+                {editAnthroSaving ? 'Сохранение...' : 'Сохранить изменения'}
+              </button>
+            </div>
+          </form>
         </div>
       )}
 

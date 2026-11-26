@@ -2576,6 +2576,7 @@ async function startServer() {
     };
     client.anthropometry.push(rec);
     saveDb(db);
+    broadcast('client:updated', client);
     res.json(rec);
   });
 
@@ -2593,19 +2594,96 @@ async function startServer() {
     const rec = client.anthropometry.find((a) => a.id === req.params.recId);
     if (!rec) return res.status(404).json({ error: 'Замер не найден' });
 
-    const body = req.body as Partial<AnthropometryRecord>;
-    if (body.heightBeforeCm !== undefined) {
+    const body = req.body as Partial<AnthropometryRecord> & { heightAfterCm?: number | null };
+    if (typeof body.date === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(body.date.trim())) {
+      rec.date = body.date.trim();
+    }
+    if (body.heightBeforeCm !== undefined && Number.isFinite(Number(body.heightBeforeCm)) && Number(body.heightBeforeCm) > 0) {
       rec.heightBeforeCm = Number(Number(body.heightBeforeCm).toFixed(1));
     }
-    if (body.heightAfterCm !== undefined) {
-      rec.heightAfterCm = Number(Number(body.heightAfterCm).toFixed(1));
+    if ('heightAfterCm' in body) {
+      if (body.heightAfterCm === null || body.heightAfterCm === undefined || String(body.heightAfterCm) === '') {
+        rec.heightAfterCm = undefined;
+        rec.heightDeltaCm = undefined;
+        rec.heightCm = rec.heightBeforeCm;
+        rec.phase = body.phase === 'after' ? 'after' : 'before';
+      } else if (Number.isFinite(Number(body.heightAfterCm)) && Number(body.heightAfterCm) > 0) {
+        rec.heightAfterCm = Number(Number(body.heightAfterCm).toFixed(1));
+        rec.heightDeltaCm = Number((rec.heightAfterCm - rec.heightBeforeCm).toFixed(1));
+        rec.heightCm = rec.heightAfterCm;
+        rec.phase = 'paired';
+      }
+    } else if (rec.heightAfterCm !== undefined) {
       rec.heightDeltaCm = Number((rec.heightAfterCm - rec.heightBeforeCm).toFixed(1));
       rec.heightCm = rec.heightAfterCm;
-      rec.phase = 'paired';
+    } else {
+      rec.heightCm = rec.heightBeforeCm;
     }
-    if (body.notes !== undefined) rec.notes = body.notes;
+
+    const numKeys: Array<keyof AnthropometryRecord> = [
+      'weightKg',
+      'bmi',
+      'bodyFatPct',
+      'muscleMassKg',
+      'waterPct',
+      'proteinPct',
+      'visceralFatLevel',
+      'boneMassKg',
+      'bmrKcal',
+      'idealWeightKg',
+      'bodyAgeYears',
+      'bodyScore',
+      'impedanceOhm',
+      'balanceTestSec',
+      'bpSys',
+      'bpDia',
+      'pulseRest',
+      'flexibilityScore',
+      'painIndex',
+    ];
+    for (const key of numKeys) {
+      const val = body[key];
+      if (val !== undefined && val !== null && Number.isFinite(Number(val))) {
+        (rec as unknown as Record<string, unknown>)[key] = Number(val);
+      }
+    }
+    if (typeof body.bodyType === 'string' && body.bodyType.trim()) {
+      rec.bodyType = body.bodyType.trim();
+    }
+    if (typeof body.calibratedScale === 'boolean') {
+      rec.calibratedScale = body.calibratedScale;
+    }
+    if (typeof body.notes === 'string') {
+      rec.notes = body.notes;
+    }
+
+    // Keep BMI consistent if weight or height changed and BMI wasn't explicitly fixed
+    if (body.bmi === undefined && rec.heightCm > 0 && rec.weightKg > 0) {
+      rec.bmi = Number((rec.weightKg / Math.pow(rec.heightCm / 100, 2)).toFixed(1));
+    }
+
     saveDb(db);
+    broadcast('client:updated', client);
     res.json(rec);
+  });
+
+  app.delete('/api/clients/:id/anthropometry/:recId', requireAuth(['owner', 'admin', 'trainer']), (req, res) => {
+    const currentUser = (req as express.Request & { currentUser: UserAccount }).currentUser;
+    const db = getDb();
+    const client = db.clients.find((c) => c.id === req.params.id);
+    if (!client) return res.status(404).json({ error: 'Клиент не найден' });
+    if (currentUser.role === 'trainer') {
+      const allowed = getTrainerAssignedClientIds(db, currentUser.id, currentUser.name);
+      if (!allowed.has(client.id)) {
+        return res.status(403).json({ error: 'Нет доступа к карточке этого клиента' });
+      }
+    }
+    const exists = client.anthropometry.some((a) => a.id === req.params.recId);
+    if (!exists) return res.status(404).json({ error: 'Замер не найден' });
+    client.anthropometry = client.anthropometry.filter((a) => a.id !== req.params.recId);
+    saveDb(db);
+    broadcast('client:updated', client);
+    res.json({ ok: true, id: req.params.recId, clientId: client.id });
   });
 
   app.post('/api/clients/:id/notes', requireAuth(['owner', 'admin', 'trainer']), (req, res) => {

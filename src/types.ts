@@ -307,17 +307,76 @@ export interface PosturePoint {
 
 export type PostureMeasurementType = 'tilt' | 'joint';
 
+export type PostureBodyRegion = 'head' | 'shoulders' | 'pelvis' | 'legs' | 'spine';
+
+export type PostureTiltDirection =
+  | 'left_higher'
+  | 'right_higher'
+  | 'shift_left'
+  | 'shift_right'
+  | 'forward'
+  | 'backward'
+  | 'valgus'
+  | 'varus'
+  | 'neutral';
+
 export interface PostureAngleMeasurement {
   id: string;
+  presetId?: string;
+  region?: PostureBodyRegion;
   label: string;
   type: PostureMeasurementType;
   points: PosturePoint[];
   angleDeg: number;
   deviationDeg?: number;
+  direction?: PostureTiltDirection;
+  directionLabel?: string;
   color?: string;
 }
 
 export type PostureViewProjection = 'front' | 'back' | 'side_left' | 'side_right';
+
+export type MmtPriority = 'primary' | 'secondary';
+export type MmtSuspectedState = 'hypotonic' | 'hypertonic' | 'check_both';
+export type MmtResultStatus = 'untested' | 'normotonic' | 'hypotonic' | 'hypertonic';
+
+export interface MmtMuscleRecommendation {
+  id: string;
+  muscleName: string;
+  side: string;
+  suspectedState: MmtSuspectedState;
+  priority: MmtPriority;
+  region: PostureBodyRegion;
+  clinicalRationale: string;
+  testProcedure: string;
+  mmtResult?: MmtResultStatus;
+}
+
+export interface KinesiologyDeviationFinding {
+  id: string;
+  region: PostureBodyRegion;
+  regionLabel: string;
+  measurementLabel: string;
+  angleDeg: number;
+  deviationDeg: number;
+  severity: 'normal' | 'mild' | 'moderate' | 'marked';
+  directionLabel: string;
+  fallingRegionHint?: string;
+  possibleCauses: string[];
+  likelyHypotonic: string[];
+  likelyHypertonic: string[];
+}
+
+export interface PostureKinesiologyReport {
+  generatedAt: string;
+  projection?: PostureViewProjection;
+  projectionLabel?: string;
+  visualLandmarks?: string[];
+  summaryPattern?: string;
+  primaryFallingRegion?: string;
+  findings: KinesiologyDeviationFinding[];
+  mmtChecklist: MmtMuscleRecommendation[];
+}
 
 export interface PostureAssessmentRecord {
   id: string;
@@ -332,6 +391,7 @@ export interface PostureAssessmentRecord {
   fineGrid?: boolean;
   beforeMeasurements: PostureAngleMeasurement[];
   afterMeasurements: PostureAngleMeasurement[];
+  kinesiologyReport?: PostureKinesiologyReport;
   notes: string;
   recordedBy?: string;
 }

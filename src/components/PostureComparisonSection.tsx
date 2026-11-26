@@ -8,12 +8,24 @@ import {
   Maximize2,
   X,
   CheckCircle2,
+  Stethoscope,
+  ClipboardCheck,
+  ChevronDown,
+  ChevronUp,
 } from 'lucide-react';
-import type { ClientProfile, PostureAssessmentRecord } from '../types';
+import type { ClientProfile, PostureAssessmentRecord, PostureViewProjection } from '../types';
 import {
   POSTURE_PROJECTION_LABELS,
   buildBeforeAfterComparison,
 } from '../utils/postureGeometry';
+import {
+  MMT_RESULT_LABELS,
+  POSTURE_REGION_LABELS,
+  PROJECTION_ANALYSIS_GUIDES,
+  SEVERITY_META,
+  buildMultiViewSynthesis,
+  generateKinesiologyReport,
+} from '../utils/appliedKinesiology';
 import { apiRequest } from '../utils/api';
 import { PostureSvgOverlay } from './PostureSvgOverlay';
 import { PostureLaserAnalyzerModal } from './PostureLaserAnalyzerModal';
@@ -37,8 +49,16 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
   const [editingRecord, setEditingRecord] = useState<PostureAssessmentRecord | undefined>(
     undefined
   );
+  const [defaultProjection, setDefaultProjection] = useState<PostureViewProjection | undefined>(
+    undefined
+  );
   const [zoomRecord, setZoomRecord] = useState<PostureAssessmentRecord | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [expandedPkIds, setExpandedPkIds] = useState<Record<string, boolean>>({});
+
+  const allViews: PostureViewProjection[] = ['front', 'back', 'side_left', 'side_right'];
+  const coveredSet = new Set(assessments.map((a) => a.projection));
+  const synthesis = buildMultiViewSynthesis(assessments);
 
   const handleDelete = async (aid: string) => {
     setDeletingId(aid);
@@ -80,6 +100,7 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
             type="button"
             onClick={() => {
               setEditingRecord(undefined);
+              setDefaultProjection(undefined);
               setAnalyzerOpen(true);
             }}
             className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-lg bg-slate-900 dark:bg-cyan-600 text-white text-xs font-semibold hover:opacity-90 cursor-pointer shrink-0"
@@ -90,12 +111,132 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
         )}
       </div>
 
+      {/* 4-View Projection Coverage & Quick-Add Bar */}
+      {(editable || assessments.length > 0) && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {allViews.map((proj) => {
+            const hasProj = coveredSet.has(proj);
+            const guide = PROJECTION_ANALYSIS_GUIDES[proj];
+            const latestForView = assessments.find((a) => a.projection === proj);
+            return (
+              <div
+                key={proj}
+                className={`p-2.5 rounded-xl border text-xs flex flex-col justify-between gap-1.5 ${
+                  hasProj
+                    ? 'bg-emerald-50/70 dark:bg-emerald-950/25 border-emerald-200 dark:border-emerald-900/60'
+                    : 'bg-slate-50/80 dark:bg-slate-800/40 border-dashed border-slate-300 dark:border-slate-700'
+                }`}
+              >
+                <div className="flex items-center justify-between gap-1">
+                  <span className="font-semibold text-slate-900 dark:text-white truncate">
+                    {guide.shortLabel}
+                  </span>
+                  <span
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
+                      hasProj
+                        ? 'bg-emerald-100 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-300'
+                        : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                    }`}
+                  >
+                    {hasProj ? 'Снято' : 'Нет фото'}
+                  </span>
+                </div>
+                <div className="text-[10px] text-slate-500 line-clamp-2">
+                  {guide.planeName}
+                </div>
+                {editable && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (latestForView) {
+                        setEditingRecord(latestForView);
+                        setDefaultProjection(proj);
+                      } else {
+                        setEditingRecord(undefined);
+                        setDefaultProjection(proj);
+                      }
+                      setAnalyzerOpen(true);
+                    }}
+                    className={`w-full py-1 rounded-md text-[11px] font-medium cursor-pointer transition-colors ${
+                      hasProj
+                        ? 'bg-white dark:bg-slate-900 border border-emerald-300 dark:border-emerald-800 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-50'
+                        : 'bg-slate-900 dark:bg-cyan-600 text-white hover:opacity-90'
+                    }`}
+                  >
+                    {hasProj ? 'Открыть / дозамерить' : '+ Добавить ракурс'}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Multi-View Applied Kinesiology Synthesis Card */}
+      {synthesis && (
+        <div className="p-3.5 rounded-xl bg-indigo-50/50 dark:bg-indigo-950/25 border border-indigo-200/80 dark:border-indigo-900/60 space-y-2.5 text-xs">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="inline-flex items-center gap-1.5 font-semibold text-indigo-950 dark:text-indigo-200">
+              <Stethoscope className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+              <span>
+                Сводный анализ по ракурсам (Анфас · Вид сзади · Профиль)
+              </span>
+            </div>
+            <span className="text-[11px] font-mono text-indigo-700 dark:text-indigo-300">
+              Покрыто ракурсов: {synthesis.coveredViews.length} из 4
+            </span>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2 text-[11px]">
+            <div className="p-2 rounded-lg bg-white/85 dark:bg-slate-900/75 border border-indigo-100 dark:border-indigo-900/40 text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-white">
+                Фронтальная плоскость:{' '}
+              </span>
+              {synthesis.frontalVsBackNote}
+            </div>
+            <div className="p-2 rounded-lg bg-white/85 dark:bg-slate-900/75 border border-indigo-100 dark:border-indigo-900/40 text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-slate-900 dark:text-white">
+                Сагиттальная плоскость:{' '}
+              </span>
+              {synthesis.sagittalNote}
+            </div>
+          </div>
+
+          {synthesis.topFindingsAcrossViews.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {synthesis.topFindingsAcrossViews.slice(0, 6).map((item, idx) => {
+                const sev = SEVERITY_META[item.severity];
+                return (
+                  <span
+                    key={`${item.projection}-${item.regionLabel}-${idx}`}
+                    className={`inline-flex items-center gap-1 px-2 py-0.5 rounded text-[11px] font-medium ${sev.badgeClass}`}
+                  >
+                    <span className="font-semibold">{item.projectionLabel}:</span>
+                    <span>{item.regionLabel}</span>
+                    <span className="font-mono font-bold">({item.deviationDeg.toFixed(1)}°)</span>
+                  </span>
+                );
+              })}
+            </div>
+          )}
+
+          {synthesis.priorityMmtMuscles.length > 0 && (
+            <div className="text-[11px] text-slate-700 dark:text-slate-300">
+              <span className="font-semibold text-indigo-900 dark:text-indigo-200">
+                Приоритетные мышцы для ММТ по всем ракурсам:{' '}
+              </span>
+              {synthesis.priorityMmtMuscles.map((m) => m.muscleName).join(' · ')}
+            </div>
+          )}
+        </div>
+      )}
+
       {assessments.length === 0 ? (
         <div className="p-6 rounded-xl bg-slate-50 dark:bg-slate-800/40 border border-dashed border-slate-300 dark:border-slate-700 text-center space-y-2">
           <div className="text-xs text-slate-500">
             {editable
-              ? 'Фотопротоколы осанки с лазерным уровнем пока не добавлены. Загрузите фото ДО (и ПОСЛЕ) коррекции, чтобы измерить перекос плеч, таза или шейный угол.'
-              : 'Фотографии осанки и замеры углов ДО/ПОСЛЕ появятся здесь после диагностики у тренера.'}
+              ? 'Фотопротоколы осанки с лазерным уровнем пока не добавлены. Загрузите фото ДО (и ПОСЛЕ) в ракурсах Анфас, Вид сзади или Профиль, чтобы выставить горизонты (голова, шея, плечи, таз, ноги) и получить анализ прикладной кинезиологии с планом ММТ.'
+              : 'Фотографии осанки, замеры углов ДО/ПОСЛЕ и кинезиологический разбор появятся здесь после диагностики у тренера.'}
           </div>
         </div>
       ) : (
@@ -321,6 +462,147 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
                     «{rec.notes}»
                   </div>
                 )}
+
+                {/* Saved Applied Kinesiology & MMT Diagnostic Summary */}
+                {(() => {
+                  const pkReport =
+                    rec.kinesiologyReport ||
+                    generateKinesiologyReport(
+                      rec.beforeMeasurements.length > 0
+                        ? rec.beforeMeasurements
+                        : rec.afterMeasurements,
+                      rec.projection
+                    );
+                  if (!pkReport || pkReport.findings.length === 0) return null;
+                  const isExpanded = expandedPkIds[rec.id] ?? true;
+                  const testedCount = pkReport.mmtChecklist.filter(
+                    (m) => m.mmtResult && m.mmtResult !== 'untested'
+                  ).length;
+
+                  return (
+                    <div className="rounded-xl border border-indigo-200/80 dark:border-indigo-900/60 bg-indigo-50/40 dark:bg-indigo-950/20 p-3 space-y-2.5 text-xs">
+                      <div className="flex flex-wrap items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setExpandedPkIds((prev) => ({ ...prev, [rec.id]: !isExpanded }))
+                          }
+                          className="inline-flex items-center gap-1.5 font-semibold text-indigo-900 dark:text-indigo-200 cursor-pointer text-left"
+                        >
+                          <Stethoscope className="w-3.5 h-3.5 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                          <span>
+                            Прикладная кинезиология и список мышц для ММТ (
+                            {pkReport.findings.length} зон · {pkReport.mmtChecklist.length} мышц
+                            {testedCount > 0 ? ` · протестировано ${testedCount}` : ''})
+                          </span>
+                          {isExpanded ? (
+                            <ChevronUp className="w-3.5 h-3.5 text-indigo-500" />
+                          ) : (
+                            <ChevronDown className="w-3.5 h-3.5 text-indigo-500" />
+                          )}
+                        </button>
+
+                        {pkReport.primaryFallingRegion && (
+                          <span className="px-2 py-0.5 rounded bg-rose-100 dark:bg-rose-950/50 text-rose-800 dark:text-rose-300 text-[11px] font-medium">
+                            Ведущий регион: {pkReport.primaryFallingRegion}
+                          </span>
+                        )}
+                      </div>
+
+                      {isExpanded && (
+                        <div className="space-y-2.5 pt-1">
+                          {pkReport.summaryPattern && (
+                            <div className="text-[11px] text-slate-700 dark:text-slate-300 bg-white/80 dark:bg-slate-900/70 rounded-lg px-2.5 py-2 border border-indigo-100 dark:border-indigo-900/40">
+                              <span className="font-semibold">Паттерн компенсации: </span>
+                              {pkReport.summaryPattern}
+                            </div>
+                          )}
+
+                          {/* Findings Grid */}
+                          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                            {pkReport.findings.map((f) => {
+                              const sev = SEVERITY_META[f.severity];
+                              return (
+                                <div
+                                  key={f.id}
+                                  className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5"
+                                >
+                                  <div className="flex items-center justify-between gap-2">
+                                    <span className="font-semibold text-slate-900 dark:text-white text-[11px]">
+                                      {f.regionLabel}: {f.measurementLabel}
+                                    </span>
+                                    <span className={`px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${sev.badgeClass}`}>
+                                      {f.deviationDeg.toFixed(1)}° · {sev.label}
+                                    </span>
+                                  </div>
+                                  <div className="text-[11px] text-slate-600 dark:text-slate-300">
+                                    {f.directionLabel}
+                                  </div>
+                                  {f.possibleCauses.length > 0 && (
+                                    <ul className="list-disc pl-4 space-y-0.5 text-[11px] text-slate-600 dark:text-slate-400">
+                                      {f.possibleCauses.slice(0, 3).map((cause, idx) => (
+                                        <li key={idx}>{cause}</li>
+                                      ))}
+                                    </ul>
+                                  )}
+                                </div>
+                              );
+                            })}
+                          </div>
+
+                          {/* MMT Checklist Compact Cards */}
+                          {pkReport.mmtChecklist.length > 0 && (
+                            <div className="p-2.5 rounded-lg bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5">
+                              <div className="flex items-center gap-1.5 text-[11px] font-semibold text-slate-800 dark:text-slate-200">
+                                <ClipboardCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Мышцы для проведения ММТ диагностики:</span>
+                              </div>
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                                {pkReport.mmtChecklist.map((m) => {
+                                  const resStatus = m.mmtResult || 'untested';
+                                  return (
+                                    <div
+                                      key={m.id}
+                                      className="px-2.5 py-1.5 rounded-md bg-slate-50 dark:bg-slate-800/60 border border-slate-200/80 dark:border-slate-700/70 text-[11px] flex items-start justify-between gap-2"
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="font-medium text-slate-900 dark:text-white truncate">
+                                          {m.muscleName}
+                                        </div>
+                                        <div className="text-[10px] text-slate-500 truncate">
+                                          {POSTURE_REGION_LABELS[m.region]} · {m.side}
+                                        </div>
+                                      </div>
+                                      <span
+                                        className={`px-1.5 py-0.5 rounded text-[10px] font-semibold shrink-0 ${
+                                          resStatus === 'hypotonic'
+                                            ? 'bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300'
+                                            : resStatus === 'hypertonic'
+                                            ? 'bg-rose-100 dark:bg-rose-950/60 text-rose-800 dark:text-rose-300'
+                                            : resStatus === 'normotonic'
+                                            ? 'bg-emerald-100 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300'
+                                            : m.priority === 'primary'
+                                            ? 'bg-indigo-100 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300'
+                                            : 'bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                                        }`}
+                                      >
+                                        {resStatus !== 'untested'
+                                          ? MMT_RESULT_LABELS[resStatus]
+                                          : m.priority === 'primary'
+                                          ? 'Приоритет'
+                                          : 'Доп.'}
+                                      </span>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
             );
           })}
@@ -333,6 +615,7 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
           clientId={client.id}
           clientName={client.name}
           initialRecord={editingRecord}
+          defaultProjection={defaultProjection}
           onSaved={({ assessment, client: serverClient }) => {
             if (onClientUpdated) {
               if (serverClient && typeof serverClient === 'object' && 'id' in serverClient) {
@@ -350,10 +633,12 @@ export const PostureComparisonSection: React.FC<PostureComparisonSectionProps> =
             }
             setAnalyzerOpen(false);
             setEditingRecord(undefined);
+            setDefaultProjection(undefined);
           }}
           onClose={() => {
             setAnalyzerOpen(false);
             setEditingRecord(undefined);
+            setDefaultProjection(undefined);
           }}
         />
       )}

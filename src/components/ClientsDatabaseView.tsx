@@ -12,6 +12,7 @@ import {
   Bluetooth,
   BluetoothOff,
   Pencil,
+  Trash2,
   X,
 } from 'lucide-react';
 import type {
@@ -49,6 +50,7 @@ interface ClientsDatabaseProps {
   onClientUpdated: (c: ClientProfile) => void;
   onAnthropometryAdded: (clientId: string, rec: AnthropometryRecord) => void;
   onAnthropometryUpdated: (clientId: string, rec: AnthropometryRecord) => void;
+  onAnthropometryDeleted?: (clientId: string, recId: string) => void;
   onNoteAdded: (clientId: string, note: { id: string; date: string; authorName: string; text: string }) => void;
   onOpenInSession: (clientId: string) => void;
 }
@@ -76,6 +78,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   onClientUpdated,
   onAnthropometryAdded,
   onAnthropometryUpdated,
+  onAnthropometryDeleted,
   onNoteAdded,
   onOpenInSession,
 }) => {
@@ -85,6 +88,9 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const [showAddClient, setShowAddClient] = useState(false);
   const [showEditClient, setShowEditClient] = useState(false);
   const [showAddAnthro, setShowAddAnthro] = useState(false);
+  const [editingAnthroId, setEditingAnthroId] = useState<string | null>(null);
+  const [confirmDeleteAnthroId, setConfirmDeleteAnthroId] = useState<string | null>(null);
+  const [busyDeleteAnthroId, setBusyDeleteAnthroId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [postHeightInput, setPostHeightInput] = useState('');
 
@@ -123,6 +129,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const [cContra, setCContra] = useState('');
 
   // Anthropometry + Mi Body Composition Scale 2 Form
+  const [anthroDate, setAnthroDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [phase, setPhase] = useState<'before' | 'paired'>('before');
   const [heightBeforeCm, setHeightBeforeCm] = useState<number>(176.0);
   const [heightAfterCm, setHeightAfterCm] = useState<string>('');
@@ -145,6 +152,9 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const [pulseRest, setPulseRest] = useState(66);
   const [flexibility, setFlexibility] = useState(74);
   const [painIndex, setPainIndex] = useState(2);
+  const [anthroNotes, setAnthroNotes] = useState('');
+  const [anthroSaving, setAnthroSaving] = useState(false);
+  const [anthroError, setAnthroError] = useState('');
 
   const scaleCalibration = scaleDevice?.calibration || DEFAULT_MI_SCALE_CALIBRATION;
 
@@ -182,6 +192,10 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const firstAnthro = activeClient?.anthropometry[0];
 
   const openAnthroModal = () => {
+    setEditingAnthroId(null);
+    setAnthroError('');
+    setAnthroDate(new Date().toISOString().slice(0, 10));
+    setAnthroNotes('');
     if (activeClient) {
       const last = activeClient.anthropometry[activeClient.anthropometry.length - 1];
       const h = last?.heightBeforeCm || last?.heightCm || (activeClient.gender === 'female' ? 168 : 179);
@@ -221,6 +235,36 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
       setFlexibility(last?.flexibilityScore ?? 72);
       setPainIndex(last?.painIndex ?? 2);
     }
+    setShowAddAnthro(true);
+  };
+
+  const openEditAnthroModal = (rec: AnthropometryRecord) => {
+    setEditingAnthroId(rec.id);
+    setAnthroError('');
+    setAnthroDate(rec.date || new Date().toISOString().slice(0, 10));
+    setPhase(rec.heightAfterCm ? 'paired' : 'before');
+    setHeightBeforeCm(rec.heightBeforeCm || rec.heightCm || 175);
+    setHeightAfterCm(rec.heightAfterCm !== undefined ? String(rec.heightAfterCm) : '');
+    setWeightKg(rec.weightKg);
+    setImpedanceOhm(rec.impedanceOhm);
+    setBodyFatPct(rec.bodyFatPct);
+    setMuscleMassKg(rec.muscleMassKg);
+    setWaterPct(rec.waterPct);
+    setProteinPct(rec.proteinPct);
+    setVisceralFatLevel(rec.visceralFatLevel);
+    setBoneMassKg(rec.boneMassKg);
+    setBmrKcal(rec.bmrKcal);
+    setIdealWeightKg(rec.idealWeightKg);
+    setBodyAgeYears(rec.bodyAgeYears);
+    setBodyScore(rec.bodyScore);
+    setBodyType(rec.bodyType || 'Стандартный');
+    setBalanceTestSec(rec.balanceTestSec ?? 42);
+    setBpSys(rec.bpSys);
+    setBpDia(rec.bpDia);
+    setPulseRest(rec.pulseRest);
+    setFlexibility(rec.flexibilityScore);
+    setPainIndex(rec.painIndex);
+    setAnthroNotes(rec.notes || '');
     setShowAddAnthro(true);
   };
 
@@ -485,48 +529,90 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const handleSaveAnthro = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!activeClient) return;
-    const parsedAfter = heightAfterCm.trim() ? Number(heightAfterCm) : undefined;
-    const hCm = parsedAfter ?? heightBeforeCm;
-    const bmi = Number((weightKg / Math.pow(hCm / 100, 2)).toFixed(1));
-    const rec = await apiRequest<AnthropometryRecord>(
-      `/api/clients/${activeClient.id}/anthropometry`,
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          phase: parsedAfter ? 'paired' : 'before',
-          heightCm: hCm,
-          heightBeforeCm,
-          heightAfterCm: parsedAfter,
-          weightKg,
-          bmi,
-          bodyFatPct,
-          muscleMassKg,
-          waterPct,
-          proteinPct,
-          visceralFatLevel,
-          boneMassKg,
-          bmrKcal,
-          idealWeightKg,
-          bodyAgeYears,
-          bodyScore,
-          bodyType,
-          impedanceOhm,
-          balanceTestSec,
-          bpSys,
-          bpDia,
-          pulseRest,
-          flexibilityScore: flexibility,
-          painIndex,
-          calibratedScale: scaleCalibration.calibrated,
-          notes:
-            parsedAfter !== undefined
-              ? `Замер до/после + Mi Body Composition Scale 2 (рост ${heightBeforeCm.toFixed(1)} → ${parsedAfter.toFixed(1)} см)`
-              : `Входной замер до тренировки: рост ${heightBeforeCm.toFixed(1)} см · Mi Body Composition Scale 2`,
-        }),
+    setAnthroError('');
+    setAnthroSaving(true);
+    try {
+      const parsedAfter =
+        heightAfterCm.trim() && Number(heightAfterCm) > 0 ? Number(heightAfterCm) : undefined;
+      const hCm = parsedAfter ?? heightBeforeCm;
+      const bmi = Number((weightKg / Math.pow(hCm / 100, 2)).toFixed(1));
+      const defaultNotes =
+        parsedAfter !== undefined
+          ? `Замер до/после + Mi Body Composition Scale 2 (рост ${heightBeforeCm.toFixed(1)} → ${parsedAfter.toFixed(1)} см)`
+          : `Входной замер до тренировки: рост ${heightBeforeCm.toFixed(1)} см · Mi Body Composition Scale 2`;
+
+      const payload = {
+        date: anthroDate || new Date().toISOString().slice(0, 10),
+        phase: parsedAfter !== undefined ? 'paired' : 'before',
+        heightCm: hCm,
+        heightBeforeCm,
+        heightAfterCm: editingAnthroId ? (parsedAfter ?? null) : parsedAfter,
+        weightKg,
+        bmi,
+        bodyFatPct,
+        muscleMassKg,
+        waterPct,
+        proteinPct,
+        visceralFatLevel,
+        boneMassKg,
+        bmrKcal,
+        idealWeightKg,
+        bodyAgeYears,
+        bodyScore,
+        bodyType,
+        impedanceOhm,
+        balanceTestSec,
+        bpSys,
+        bpDia,
+        pulseRest,
+        flexibilityScore: flexibility,
+        painIndex,
+        calibratedScale: scaleCalibration.calibrated,
+        notes: anthroNotes.trim() || defaultNotes,
+      };
+
+      if (editingAnthroId) {
+        const updated = await apiRequest<AnthropometryRecord>(
+          `/api/clients/${activeClient.id}/anthropometry/${editingAnthroId}`,
+          {
+            method: 'PATCH',
+            body: JSON.stringify(payload),
+          }
+        );
+        onAnthropometryUpdated(activeClient.id, updated);
+      } else {
+        const rec = await apiRequest<AnthropometryRecord>(
+          `/api/clients/${activeClient.id}/anthropometry`,
+          {
+            method: 'POST',
+            body: JSON.stringify(payload),
+          }
+        );
+        onAnthropometryAdded(activeClient.id, rec);
       }
-    );
-    onAnthropometryAdded(activeClient.id, rec);
-    setShowAddAnthro(false);
+      setShowAddAnthro(false);
+      setEditingAnthroId(null);
+    } catch (err) {
+      setAnthroError(
+        err instanceof Error ? err.message : 'Не удалось сохранить данные замера'
+      );
+    } finally {
+      setAnthroSaving(false);
+    }
+  };
+
+  const handleDeleteAnthro = async (recId: string) => {
+    if (!activeClient) return;
+    setBusyDeleteAnthroId(recId);
+    try {
+      await apiRequest(`/api/clients/${activeClient.id}/anthropometry/${recId}`, {
+        method: 'DELETE',
+      });
+      setConfirmDeleteAnthroId(null);
+      onAnthropometryDeleted?.(activeClient.id, recId);
+    } finally {
+      setBusyDeleteAnthroId(null);
+    }
   };
 
   const handleRecordPostHeight = async (e: React.FormEvent) => {
@@ -808,7 +894,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                 </h3>
               </div>
               {latestAnthro && (
-                <div className="flex items-center gap-3 text-xs font-mono text-slate-500">
+                <div className="flex flex-wrap items-center gap-2.5 text-xs font-mono text-slate-500">
                   {latestAnthro.calibratedScale && (
                     <span className="inline-flex items-center gap-1 text-emerald-700 dark:text-emerald-400">
                       <CheckCircle2 className="w-3.5 h-3.5" />
@@ -816,6 +902,14 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                     </span>
                   )}
                   <span>Замер: {latestAnthro.date}</span>
+                  <button
+                    type="button"
+                    onClick={() => openEditAnthroModal(latestAnthro)}
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800 text-[11px] font-sans font-medium text-slate-700 dark:text-slate-200 cursor-pointer"
+                  >
+                    <Pencil className="w-3 h-3" />
+                    <span>Редактировать последний</span>
+                  </button>
                 </div>
               )}
             </div>
@@ -1052,32 +1146,84 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                           <th className="py-1.5 pr-3 font-medium text-right">Висц.</th>
                           <th className="py-1.5 pr-3 font-medium text-right">BMR</th>
                           <th className="py-1.5 pr-3 font-medium text-right">Оценка</th>
-                          <th className="py-1.5 font-medium text-right">АД / Пульс</th>
+                          <th className="py-1.5 pr-3 font-medium text-right">АД / Пульс</th>
+                          <th className="py-1.5 font-medium text-right">Действия</th>
                         </tr>
                       </thead>
                       <tbody className="divide-y divide-slate-100 dark:divide-slate-800 font-mono tabular-nums">
-                        {activeClient.anthropometry.map((a) => (
-                          <tr key={a.id}>
-                            <td className="py-1.5 pr-3">{a.date}</td>
-                            <td className="py-1.5 pr-3">
-                              {a.heightBeforeCm.toFixed(1)}
-                              {a.heightAfterCm ? ` → ${a.heightAfterCm.toFixed(1)}` : ''} см
-                              {typeof a.heightDeltaCm === 'number' && (
-                                <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">
-                                  ({a.heightDeltaCm >= 0 ? '+' : ''}{a.heightDeltaCm.toFixed(1)})
-                                </span>
-                              )}
-                            </td>
-                            <td className="py-1.5 pr-3 text-right">{a.weightKg} кг</td>
-                            <td className="py-1.5 pr-3 text-right">{a.bodyFatPct}%</td>
-                            <td className="py-1.5 pr-3 text-right">{a.muscleMassKg} кг</td>
-                            <td className="py-1.5 pr-3 text-right">{a.waterPct}%</td>
-                            <td className="py-1.5 pr-3 text-right">{a.visceralFatLevel}</td>
-                            <td className="py-1.5 pr-3 text-right">{a.bmrKcal}</td>
-                            <td className="py-1.5 pr-3 text-right">{a.bodyScore}/100</td>
-                            <td className="py-1.5 text-right">{a.bpSys}/{a.bpDia} · {a.pulseRest}</td>
-                          </tr>
-                        ))}
+                        {activeClient.anthropometry
+                          .slice()
+                          .reverse()
+                          .map((a) => {
+                            const isConfirming = confirmDeleteAnthroId === a.id;
+                            const isBusyDel = busyDeleteAnthroId === a.id;
+                            return (
+                              <tr key={a.id}>
+                                <td className="py-1.5 pr-3">{a.date}</td>
+                                <td className="py-1.5 pr-3">
+                                  {a.heightBeforeCm.toFixed(1)}
+                                  {a.heightAfterCm ? ` → ${a.heightAfterCm.toFixed(1)}` : ''} см
+                                  {typeof a.heightDeltaCm === 'number' && (
+                                    <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">
+                                      ({a.heightDeltaCm >= 0 ? '+' : ''}
+                                      {a.heightDeltaCm.toFixed(1)})
+                                    </span>
+                                  )}
+                                </td>
+                                <td className="py-1.5 pr-3 text-right">{a.weightKg} кг</td>
+                                <td className="py-1.5 pr-3 text-right">{a.bodyFatPct}%</td>
+                                <td className="py-1.5 pr-3 text-right">{a.muscleMassKg} кг</td>
+                                <td className="py-1.5 pr-3 text-right">{a.waterPct}%</td>
+                                <td className="py-1.5 pr-3 text-right">{a.visceralFatLevel}</td>
+                                <td className="py-1.5 pr-3 text-right">{a.bmrKcal}</td>
+                                <td className="py-1.5 pr-3 text-right">{a.bodyScore}/100</td>
+                                <td className="py-1.5 pr-3 text-right">
+                                  {a.bpSys}/{a.bpDia} · {a.pulseRest}
+                                </td>
+                                <td className="py-1.5 text-right font-sans">
+                                  {isConfirming ? (
+                                    <span className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        disabled={isBusyDel}
+                                        onClick={() => handleDeleteAnthro(a.id)}
+                                        className="px-2 py-0.5 rounded bg-rose-600 text-white text-[11px] font-medium hover:opacity-90 cursor-pointer disabled:opacity-50"
+                                      >
+                                        {isBusyDel ? '...' : 'Удалить'}
+                                      </button>
+                                      <button
+                                        type="button"
+                                        disabled={isBusyDel}
+                                        onClick={() => setConfirmDeleteAnthroId(null)}
+                                        className="px-2 py-0.5 rounded border border-slate-300 dark:border-slate-700 text-[11px] cursor-pointer"
+                                      >
+                                        Отмена
+                                      </button>
+                                    </span>
+                                  ) : (
+                                    <span className="inline-flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => openEditAnthroModal(a)}
+                                        title="Редактировать замер"
+                                        className="p-1 rounded border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+                                      >
+                                        <Pencil className="w-3.5 h-3.5" />
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => setConfirmDeleteAnthroId(a.id)}
+                                        title="Удалить замер"
+                                        className="p-1 rounded border border-slate-200 dark:border-slate-700 text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 cursor-pointer"
+                                      >
+                                        <Trash2 className="w-3.5 h-3.5" />
+                                      </button>
+                                    </span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
                       </tbody>
                     </table>
                   </div>
@@ -1439,16 +1585,25 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
         </div>
       )}
 
-      {/* Modal: Add Anthropometry (Height Before/After + Full Mi Body Composition Scale 2) */}
+      {/* Modal: Add / Edit Anthropometry (Height Before/After + Full Mi Body Composition Scale 2) */}
       {showAddAnthro && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4 overflow-y-auto">
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-2 sm:p-4"
+          onClick={() => {
+            setShowAddAnthro(false);
+            setEditingAnthroId(null);
+          }}
+        >
           <form
             onSubmit={handleSaveAnthro}
-            className="w-full max-w-2xl rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-6 space-y-4 shadow-xl my-8"
+            onClick={(e) => e.stopPropagation()}
+            className="w-full max-w-2xl max-h-[calc(100dvh-1rem)] sm:max-h-[90dvh] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-xl flex flex-col overflow-hidden"
           >
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-5 py-4 border-b border-slate-200 dark:border-slate-800 shrink-0">
               <h3 className="font-display text-lg font-semibold">
-                Замер роста и Mi Body Composition Scale 2 + B05
+                {editingAnthroId
+                  ? 'Редактировать замер антропометрии'
+                  : 'Замер роста и Mi Body Composition Scale 2 + B05'}
               </h3>
               <div className="flex flex-wrap items-center gap-2">
                 {liveSensors.scale.rawWeightKg !== null && (
@@ -1469,289 +1624,338 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                   <RefreshCw className="w-3.5 h-3.5" />
                   <span>Калибровка и пересчёт Mi Scale 2</span>
                 </button>
-              </div>
-            </div>
-
-            {/* Height Before / After */}
-            <div className="p-3.5 rounded-lg bg-cyan-50/50 dark:bg-cyan-950/20 border border-cyan-200/80 dark:border-cyan-900/50 space-y-2.5">
-              <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
-                <span className="font-semibold">Замер роста (декомпрессия)</span>
-                <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-slate-900">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPhase('before');
-                      setHeightAfterCm('');
-                    }}
-                    className={`px-2.5 py-0.5 rounded font-medium cursor-pointer ${
-                      phase === 'before' ? 'bg-slate-900 dark:bg-cyan-600 text-white' : 'text-slate-500'
-                    }`}
-                  >
-                    До начала тренировки
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setPhase('paired');
-                      if (!heightAfterCm) setHeightAfterCm(String((heightBeforeCm + 0.9).toFixed(1)));
-                    }}
-                    className={`px-2.5 py-0.5 rounded font-medium cursor-pointer ${
-                      phase === 'paired' ? 'bg-slate-900 dark:bg-cyan-600 text-white' : 'text-slate-500'
-                    }`}
-                  >
-                    До + После тренировки
-                  </button>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <div>
-                  <label className="block text-[11px] font-medium mb-1">Рост до тренировки (см)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    value={heightBeforeCm}
-                    onChange={(e) => setHeightBeforeCm(Number(e.target.value))}
-                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                  />
-                </div>
-                <div>
-                  <label className="block text-[11px] font-medium mb-1">Рост после (см, опц.)</label>
-                  <input
-                    type="number"
-                    step="0.1"
-                    placeholder="После сессии"
-                    value={heightAfterCm}
-                    onChange={(e) => {
-                      setHeightAfterCm(e.target.value);
-                      if (e.target.value.trim()) setPhase('paired');
-                    }}
-                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                  />
-                </div>
-                <div className="flex flex-col justify-end pb-1">
-                  <span className="text-[11px] text-slate-500">Динамика за сессию</span>
-                  <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400">
-                    {modalHeightDelta !== null
-                      ? `${modalHeightDelta >= 0 ? '+' : ''}${modalHeightDelta.toFixed(1)} см`
-                      : 'Фиксируется после виса'}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            {/* Mi Body Composition Scale 2 Full Metrics */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Вес (кг)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={weightKg}
-                  onChange={(e) => setWeightKg(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Жир (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={bodyFatPct}
-                  onChange={(e) => setBodyFatPct(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Мышцы (кг)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={muscleMassKg}
-                  onChange={(e) => setMuscleMassKg(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Вода (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={waterPct}
-                  onChange={(e) => setWaterPct(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Белок (%)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={proteinPct}
-                  onChange={(e) => setProteinPct(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Висц. жир (ур.)</label>
-                <input
-                  type="number"
-                  min={1}
-                  max={59}
-                  value={visceralFatLevel}
-                  onChange={(e) => setVisceralFatLevel(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Костная масса (кг)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={boneMassKg}
-                  onChange={(e) => setBoneMassKg(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">BMR (ккал)</label>
-                <input
-                  type="number"
-                  value={bmrKcal}
-                  onChange={(e) => setBmrKcal(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Идеальный вес (кг)</label>
-                <input
-                  type="number"
-                  step="0.1"
-                  value={idealWeightKg}
-                  onChange={(e) => setIdealWeightKg(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Метаб. возраст</label>
-                <input
-                  type="number"
-                  value={bodyAgeYears}
-                  onChange={(e) => setBodyAgeYears(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Оценка тела (/100)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={bodyScore}
-                  onChange={(e) => setBodyScore(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Импеданс (Ω)</label>
-                <input
-                  type="number"
-                  value={impedanceOhm}
-                  onChange={(e) => setImpedanceOhm(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-            </div>
-
-            <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
-              <div className="col-span-2">
-                <label className="block text-[11px] font-medium mb-1">Тип тела (Mi Scale 2)</label>
-                <select
-                  value={bodyType}
-                  onChange={(e) => setBodyType(e.target.value)}
-                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                <button
+                  type="button"
+                  aria-label="Закрыть"
+                  onClick={() => {
+                    setShowAddAnthro(false);
+                    setEditingAnthroId(null);
+                  }}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
                 >
-                  {BODY_TYPES.map((bt) => (
-                    <option key={bt} value={bt}>{bt}</option>
-                  ))}
-                </select>
+                  <X className="w-4 h-4" />
+                </button>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Баланс (сек)</label>
-                <input
-                  type="number"
-                  value={balanceTestSec}
-                  onChange={(e) => setBalanceTestSec(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
+            </div>
+
+            <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4">
+              {anthroError && (
+                <div className="p-3 rounded-lg bg-rose-50 dark:bg-rose-950/30 border border-rose-200 dark:border-rose-800 text-xs text-rose-700 dark:text-rose-300">
+                  {anthroError}
+                </div>
+              )}
+
+              {/* Date + Height Before / After */}
+              <div className="p-3.5 rounded-lg bg-cyan-50/50 dark:bg-cyan-950/20 border border-cyan-200/80 dark:border-cyan-900/50 space-y-2.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-xs">
+                  <span className="font-semibold">Дата и замер роста (декомпрессия)</span>
+                  <div className="inline-flex rounded-md border border-slate-200 dark:border-slate-700 p-0.5 bg-white dark:bg-slate-900">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhase('before');
+                        setHeightAfterCm('');
+                      }}
+                      className={`px-2.5 py-0.5 rounded font-medium cursor-pointer ${
+                        phase === 'before' ? 'bg-slate-900 dark:bg-cyan-600 text-white' : 'text-slate-500'
+                      }`}
+                    >
+                      До начала тренировки
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setPhase('paired');
+                        if (!heightAfterCm) setHeightAfterCm(String((heightBeforeCm + 0.9).toFixed(1)));
+                      }}
+                      className={`px-2.5 py-0.5 rounded font-medium cursor-pointer ${
+                        phase === 'paired' ? 'bg-slate-900 dark:bg-cyan-600 text-white' : 'text-slate-500'
+                      }`}
+                    >
+                      До + После тренировки
+                    </button>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-4 gap-3">
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1">Дата замера</label>
+                    <input
+                      type="date"
+                      required
+                      value={anthroDate}
+                      onChange={(e) => setAnthroDate(e.target.value)}
+                      className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1">Рост до тренировки (см)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      value={heightBeforeCm}
+                      onChange={(e) => setHeightBeforeCm(Number(e.target.value))}
+                      className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-[11px] font-medium mb-1">Рост после (см, опц.)</label>
+                    <input
+                      type="number"
+                      step="0.1"
+                      placeholder="После сессии"
+                      value={heightAfterCm}
+                      onChange={(e) => {
+                        setHeightAfterCm(e.target.value);
+                        if (e.target.value.trim()) setPhase('paired');
+                      }}
+                      className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                    />
+                  </div>
+                  <div className="flex flex-col justify-end pb-1">
+                    <span className="text-[11px] text-slate-500">Динамика за сессию</span>
+                    <span className="font-mono text-sm font-bold text-emerald-700 dark:text-emerald-400">
+                      {modalHeightDelta !== null
+                        ? `${modalHeightDelta >= 0 ? '+' : ''}${modalHeightDelta.toFixed(1)} см`
+                        : 'Фиксируется после виса'}
+                    </span>
+                  </div>
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">АД Верх.</label>
-                <input
-                  type="number"
-                  value={bpSys}
-                  onChange={(e) => setBpSys(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
+
+              {/* Mi Body Composition Scale 2 Full Metrics */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Вес (кг)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={weightKg}
+                    onChange={(e) => setWeightKg(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Жир (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={bodyFatPct}
+                    onChange={(e) => setBodyFatPct(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Мышцы (кг)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={muscleMassKg}
+                    onChange={(e) => setMuscleMassKg(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Вода (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={waterPct}
+                    onChange={(e) => setWaterPct(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Белок (%)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={proteinPct}
+                    onChange={(e) => setProteinPct(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Висц. жир (ур.)</label>
+                  <input
+                    type="number"
+                    min={1}
+                    max={59}
+                    value={visceralFatLevel}
+                    onChange={(e) => setVisceralFatLevel(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Костная масса (кг)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={boneMassKg}
+                    onChange={(e) => setBoneMassKg(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">BMR (ккал)</label>
+                  <input
+                    type="number"
+                    value={bmrKcal}
+                    onChange={(e) => setBmrKcal(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Идеальный вес (кг)</label>
+                  <input
+                    type="number"
+                    step="0.1"
+                    value={idealWeightKg}
+                    onChange={(e) => setIdealWeightKg(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Метаб. возраст</label>
+                  <input
+                    type="number"
+                    value={bodyAgeYears}
+                    onChange={(e) => setBodyAgeYears(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Оценка тела (/100)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={bodyScore}
+                    onChange={(e) => setBodyScore(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Импеданс (Ω)</label>
+                  <input
+                    type="number"
+                    value={impedanceOhm}
+                    onChange={(e) => setImpedanceOhm(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
               </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">АД Нижн.</label>
-                <input
-                  type="number"
-                  value={bpDia}
-                  onChange={(e) => setBpDia(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
+
+              <div className="grid grid-cols-2 sm:grid-cols-6 gap-3">
+                <div className="col-span-2">
+                  <label className="block text-[11px] font-medium mb-1">Тип тела (Mi Scale 2)</label>
+                  <select
+                    value={bodyType}
+                    onChange={(e) => setBodyType(e.target.value)}
+                    className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  >
+                    {BODY_TYPES.map((bt) => (
+                      <option key={bt} value={bt}>{bt}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Баланс (сек)</label>
+                  <input
+                    type="number"
+                    value={balanceTestSec}
+                    onChange={(e) => setBalanceTestSec(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">АД Верх.</label>
+                  <input
+                    type="number"
+                    value={bpSys}
+                    onChange={(e) => setBpSys(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">АД Нижн.</label>
+                  <input
+                    type="number"
+                    value={bpDia}
+                    onChange={(e) => setBpDia(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Пульс</label>
+                  <input
+                    type="number"
+                    value={pulseRest}
+                    onChange={(e) => setPulseRest(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
               </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Индекс гибкости (0–100)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={100}
+                    value={flexibility}
+                    onChange={(e) => setFlexibility(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+                <div>
+                  <label className="block text-[11px] font-medium mb-1">Уровень дискомфорта (0–10)</label>
+                  <input
+                    type="number"
+                    min={0}
+                    max={10}
+                    value={painIndex}
+                    onChange={(e) => setPainIndex(Number(e.target.value))}
+                    className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  />
+                </div>
+              </div>
+
               <div>
-                <label className="block text-[11px] font-medium mb-1">Пульс</label>
+                <label className="block text-[11px] font-medium mb-1">Примечание / комментарий к замеру</label>
                 <input
-                  type="number"
-                  value={pulseRest}
-                  onChange={(e) => setPulseRest(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                  type="text"
+                  value={anthroNotes}
+                  onChange={(e) => setAnthroNotes(e.target.value)}
+                  placeholder="Опционально — заполнится автоматически, если оставить пустым"
+                  className="w-full px-2.5 py-1.5 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
                 />
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Индекс гибкости (0–100)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={100}
-                  value={flexibility}
-                  onChange={(e) => setFlexibility(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-              <div>
-                <label className="block text-[11px] font-medium mb-1">Уровень дискомфорта (0–10)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={10}
-                  value={painIndex}
-                  onChange={(e) => setPainIndex(Number(e.target.value))}
-                  className="w-full px-2.5 py-1.5 text-sm font-mono rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
-                />
-              </div>
-            </div>
-
-            <div className="flex justify-end gap-2 pt-2">
+            <div className="flex justify-end gap-2 px-5 py-3.5 border-t border-slate-200 dark:border-slate-800 shrink-0 bg-white dark:bg-slate-900">
               <button
                 type="button"
-                onClick={() => setShowAddAnthro(false)}
+                disabled={anthroSaving}
+                onClick={() => {
+                  setShowAddAnthro(false);
+                  setEditingAnthroId(null);
+                }}
                 className="px-4 py-2 text-xs font-medium rounded-lg border border-slate-200 dark:border-slate-700 cursor-pointer"
               >
                 Отмена
               </button>
               <button
                 type="submit"
-                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-900 dark:bg-cyan-600 text-white cursor-pointer"
+                disabled={anthroSaving}
+                className="px-4 py-2 text-xs font-medium rounded-lg bg-slate-900 dark:bg-cyan-600 text-white cursor-pointer disabled:opacity-50"
               >
-                Сохранить замер
+                {anthroSaving
+                  ? 'Сохранение...'
+                  : editingAnthroId
+                  ? 'Сохранить изменения'
+                  : 'Сохранить замер'}
               </button>
             </div>
           </form>

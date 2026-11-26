@@ -1317,7 +1317,12 @@ export default function App() {
                         ...prev,
                         clients: prev.clients.map((c) =>
                           c.id === clientId
-                            ? { ...c, anthropometry: [...c.anthropometry, rec] }
+                            ? {
+                                ...c,
+                                anthropometry: c.anthropometry.some((a) => a.id === rec.id)
+                                  ? c.anthropometry
+                                  : [...c.anthropometry, rec],
+                              }
                             : c
                         ),
                       }
@@ -1336,6 +1341,23 @@ export default function App() {
                                 anthropometry: c.anthropometry.map((a) =>
                                   a.id === rec.id ? rec : a
                                 ),
+                              }
+                            : c
+                        ),
+                      }
+                    : prev
+                )
+              }
+              onAnthropometryDeleted={(clientId, recId) =>
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        clients: prev.clients.map((c) =>
+                          c.id === clientId
+                            ? {
+                                ...c,
+                                anthropometry: c.anthropometry.filter((a) => a.id !== recId),
                               }
                             : c
                         ),
@@ -1601,7 +1623,12 @@ export default function App() {
                         ...prev,
                         clients: prev.clients.map((c) =>
                           c.id === clientId
-                            ? { ...c, anthropometry: [...c.anthropometry, rec] }
+                            ? {
+                                ...c,
+                                anthropometry: c.anthropometry.some((a) => a.id === rec.id)
+                                  ? c.anthropometry
+                                  : [...c.anthropometry, rec],
+                              }
                             : c
                         ),
                       }
@@ -1620,6 +1647,23 @@ export default function App() {
                                 anthropometry: c.anthropometry.map((a) =>
                                   a.id === rec.id ? rec : a
                                 ),
+                              }
+                            : c
+                        ),
+                      }
+                    : prev
+                )
+              }
+              onAnthropometryDeleted={(clientId, recId) =>
+                setData((prev) =>
+                  prev
+                    ? {
+                        ...prev,
+                        clients: prev.clients.map((c) =>
+                          c.id === clientId
+                            ? {
+                                ...c,
+                                anthropometry: c.anthropometry.filter((a) => a.id !== recId),
                               }
                             : c
                         ),
