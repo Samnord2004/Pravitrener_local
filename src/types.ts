@@ -36,6 +36,9 @@ export interface UserAccount {
   telegramHandle: string;
   avatarInitials: string;
   active: boolean;
+  ownerApproved?: boolean;
+  ownerApprovedAt?: string;
+  ownerApprovedBy?: string;
   trainerProfile?: TrainerPublicProfile;
   legalAcceptedAt?: string;
   legalAgreementsVersion?: string;
@@ -66,6 +69,32 @@ export interface LegalAcceptanceRecord {
   ownerNotificationStatus?: 'sent' | 'logged' | 'read_by_owner';
   ownerEmailDispatched?: boolean;
   ownerReadAt?: string;
+}
+
+export type LegalAgreementCategory =
+  | 'Конфиденциальность'
+  | 'Персональные данные'
+  | 'Оферта и правила'
+  | 'Безопасность и здоровье'
+  | 'Телеметрия и фото'
+  | 'Уведомления'
+  | 'Конфиденциальность сотрудника (NDA)';
+
+export interface LegalAgreementSection {
+  heading: string;
+  paragraphs: string[];
+}
+
+export interface LegalAgreementDoc {
+  id: string;
+  title: string;
+  shortTitle: string;
+  category: LegalAgreementCategory;
+  version: string;
+  updatedAt: string;
+  requiredFor: UserRole[];
+  summary: string;
+  sections: LegalAgreementSection[];
 }
 
 export interface StoredUserAccount extends UserAccount {
@@ -440,6 +469,25 @@ export interface ClientProgressNote {
   text: string;
 }
 
+export type ClientHandoverMode = 'permanent' | 'guest_visit';
+
+export interface ClientHandoverRecord {
+  id: string;
+  date: string;
+  mode: ClientHandoverMode;
+  fromTrainerId?: string;
+  fromTrainerName?: string;
+  toTrainerId: string;
+  toTrainerName: string;
+  fromStudioId?: string;
+  toStudioId: string;
+  byUserId: string;
+  byUserName: string;
+  note?: string;
+  revokedPreviousAccess?: boolean;
+  transferredBookingsCount?: number;
+}
+
 export interface ClientProfile {
   id: string;
   userId?: string;
@@ -451,6 +499,11 @@ export interface ClientProfile {
   telegram: string;
   telegramChatId?: string;
   studioId: string;
+  assignedTrainerId?: string;
+  assignedTrainerName?: string;
+  guestTrainerIds?: string[];
+  revokedTrainerIds?: string[];
+  handoverHistory?: ClientHandoverRecord[];
   birthYear: number;
   birthDate: string; // YYYY-MM-DD
   lastBirthdayGreetingYear?: number;
@@ -499,11 +552,34 @@ export interface ScaleCalibrationConfig {
   lastCalibratedAt: string;
 }
 
-export type HardwareTransportMode = 'web_bluetooth' | 'web_serial' | 'websocket_bridge' | 'disconnected';
+export type HardwareTransportMode =
+  | 'web_bluetooth'
+  | 'native_bluetooth'
+  | 'web_serial'
+  | 'websocket_bridge'
+  | 'disconnected';
+
+export type NativeBluetoothProtocol = 'auto' | 'gatt' | 'spp';
+
+export interface NativeBluetoothDeviceInfo {
+  id: string;
+  name: string;
+  address: string;
+  transport: 'gatt' | 'spp' | 'dual';
+  paired: boolean;
+  connected?: boolean;
+  port?: string;
+  rssi?: number;
+  platform: 'android' | 'windows' | 'macos' | 'linux' | 'pc_bridge';
+  sourceBackend: 'android_bridge' | 'desktop_ipc' | 'server_local' | 'pc_local_agent';
+  recommendedFor?: EquipmentType[];
+}
 
 export interface HardwareDeviceConfig {
-  transport: 'web_bluetooth' | 'web_serial' | 'websocket_bridge';
+  transport: 'web_bluetooth' | 'native_bluetooth' | 'web_serial' | 'websocket_bridge';
   deviceNameFilter?: string;
+  nativeAddress?: string;
+  nativeProtocol?: NativeBluetoothProtocol;
   bridgeUrl?: string;
   serialBaudRate?: number;
   autoSyncToCard?: boolean;
@@ -516,7 +592,12 @@ export interface HardwareDeviceConfig {
 
 export interface LiveHardwarePacket {
   type: EquipmentType;
-  source: 'web_bluetooth' | 'web_serial' | 'websocket_bridge' | 'http_bridge';
+  source:
+    | 'web_bluetooth'
+    | 'native_bluetooth'
+    | 'web_serial'
+    | 'websocket_bridge'
+    | 'http_bridge';
   timestamp: string;
   batteryPct?: number;
   deviceName?: string;
@@ -572,18 +653,51 @@ export interface TelemetryPoint {
   emgCh2Mv: number;
 }
 
+export interface SessionEmgStats {
+  ch1MinMv: number;
+  ch1MaxMv: number;
+  ch1AvgMv: number;
+  ch2MinMv: number;
+  ch2MaxMv: number;
+  ch2AvgMv: number;
+}
+
 export interface CompletedExerciseLog {
   exerciseId: string;
   title: string;
   durationSec: number;
+  minWinchKg?: number;
   maxWinchKg: number;
+  minLimbLoads?: {
+    lh: number;
+    rh: number;
+    lf: number;
+    rf: number;
+  };
+  maxLimbLoads?: {
+    lh: number;
+    rh: number;
+    lf: number;
+    rf: number;
+  };
+  minEmgMv?: number;
+  maxEmgMv?: number;
   avgEmgMv: number;
+  minEmgCh2Mv?: number;
+  maxEmgCh2Mv?: number;
+  avgEmgCh2Mv?: number;
+  clientRating?: number; // 1..5 звёзд
+  discomfortLevel?: number; // 0..10
+  clientFeeling?: string;
+  trainerNote?: string;
 }
 
 export interface TrainingSessionRecord {
   id: string;
   bookingId?: string;
   studioId: string;
+  studioName?: string;
+  isGuestStudioSession?: boolean;
   clientId: string;
   clientName: string;
   trainerId: string;
@@ -594,19 +708,34 @@ export interface TrainingSessionRecord {
   endedAt: string;
   durationSec: number;
   completedExercises: CompletedExerciseLog[];
+  minWinchKg?: number;
   peakWinchKg: number;
   avgSymmetryPct: number;
+  minLimbLoads?: {
+    lh: number;
+    rh: number;
+    lf: number;
+    rf: number;
+  };
   maxLimbLoads: {
     lh: number;
     rh: number;
     lf: number;
     rf: number;
   };
+  emgStats?: SessionEmgStats;
+  minHrBpm?: number;
+  maxHrBpm?: number;
   avgHrBpm: number;
   bpBefore: string;
   bpAfter: string;
   heightBeforeCm?: number;
   heightAfterCm?: number;
+  weightBeforeKg?: number;
+  weightAfterKg?: number;
+  postureBeforeSummary?: string;
+  postureAfterSummary?: string;
+  telemetrySeries?: TelemetryPoint[];
   notes: string;
   paymentMethod: PaymentStatus;
   amountPaidRub: number;
@@ -757,6 +886,14 @@ export interface SystemSecuritySettings {
   tunnelMode?: 'cloudflare' | 'nginx' | 'caddy' | 'direct' | 'local';
   autoCheckUpdates?: boolean;
   releaseChannel?: 'stable' | 'beta';
+  githubRepo?: string;
+  githubBranch?: string;
+  lastUpdatedCommit?: string;
+  latestAvailableVersion?: string;
+  latestReleaseTag?: string;
+  latestReleaseUrl?: string;
+  latestDmgUrl?: string;
+  latestExeUrl?: string;
   appVersion?: string;
   lastUpdateCheckAt?: string;
   lastUpdatedAt?: string;
@@ -788,4 +925,6 @@ export interface StudioDatabase {
   systemSettings?: SystemSecuritySettings;
   hardwareRealModeInitialized?: boolean;
   legalAcceptances?: LegalAcceptanceRecord[];
+  legalDocuments?: LegalAgreementDoc[];
+  legalBundleVersion?: string;
 }

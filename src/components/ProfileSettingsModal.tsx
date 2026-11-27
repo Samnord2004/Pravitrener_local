@@ -90,6 +90,14 @@ const ROLE_SHORT: Record<UserRole, string> = {
   client: 'Клиент',
 };
 
+interface LocalInstallerAsset {
+  fileName: string;
+  platform: 'mac-arm64' | 'win-x64';
+  ext: 'dmg' | 'exe';
+  sizeBytes: number;
+  downloadUrl: string;
+}
+
 interface SystemInfoResponse {
   appName: string;
   version: string;
@@ -97,9 +105,33 @@ interface SystemInfoResponse {
   hasGit: boolean;
   nodeVersion: string;
   platform: string;
+  arch?: string;
   uptimeSec: number;
   port: number;
+  localInstallers?: LocalInstallerAsset[];
   systemSettings: SystemSecuritySettings;
+}
+
+interface UpdateCheckResponse {
+  currentVersion?: string;
+  currentCommit?: string;
+  remoteCommit?: string;
+  remoteCommitMsg?: string;
+  remoteCommitDate?: string;
+  updateAvailable: boolean;
+  commitsBehind?: number;
+  checkedAt: string;
+  hasGit?: boolean;
+  githubRepo?: string;
+  githubBranch?: string;
+  latestReleaseTag?: string;
+  latestReleaseUrl?: string;
+  latestDmgUrl?: string;
+  latestDmgName?: string;
+  latestExeUrl?: string;
+  latestExeName?: string;
+  localInstallers?: LocalInstallerAsset[];
+  message: string;
 }
 
 export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
@@ -167,7 +199,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
   const [pwdMessage, setPwdMessage] = useState('');
 
   // Staff Management (Owner / Admin)
-  const [staffFilter, setStaffFilter] = useState<'all' | 'working' | 'fired'>('all');
+  const [staffFilter, setStaffFilter] = useState<'all' | 'working' | 'pending' | 'fired'>('all');
   const [resetTargetId, setResetTargetId] = useState<string | null>(null);
   const [resetPwdInput, setResetPwdInput] = useState('');
   const [resetSendEmail, setResetSendEmail] = useState(true);
@@ -199,12 +231,12 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     tunnelMode: 'cloudflare',
     autoCheckUpdates: true,
     releaseChannel: 'stable',
+    githubRepo: '',
+    githubBranch: 'main',
   });
-  const [updateCheckResult, setUpdateCheckResult] = useState<{
-    updateAvailable: boolean;
-    message: string;
-    checkedAt: string;
-  } | null>(null);
+  const [updateCheckResult, setUpdateCheckResult] = useState<UpdateCheckResponse | null>(null);
+  const [desktopAppVersion, setDesktopAppVersion] = useState<string>('');
+  const [desktopReleaseBusy, setDesktopReleaseBusy] = useState(false);
   const [sysBusy, setSysBusy] = useState(false);
   const [sysMsg, setSysMsg] = useState('');
   const [copiedCmd, setCopiedCmd] = useState(false);
@@ -224,6 +256,12 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
           setSysInfo(res);
           setSysSettings(res.systemSettings);
         })
+        .catch(() => undefined);
+    }
+    if (tab === 'system' && typeof window !== 'undefined' && window.praviloDesktop?.getAppInfo) {
+      window.praviloDesktop
+        .getAppInfo()
+        .then((info) => setDesktopAppVersion(info?.version || ''))
         .catch(() => undefined);
     }
   }, [isOwner, tab, sysInfo]);
@@ -382,11 +420,30 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
       onUserUpdated(updated);
       setStaffActionMsg(
         nextStatus === 'fired'
-          ? `Сотрудник ${updated.name} уволен — доступ к приложению немедленно закрыт.`
-          : `Доступ сотрудника ${updated.name} восстановлен (статус: Работает).`
+          ? `Сотрудник ${updated.name} уволен — доступ к приложению немедленно закрыт, но учётная запись сохранена в базе на случай возврата.`
+          : `Доступ сотрудника ${updated.name} восстановлен (статус: Работает${updated.ownerApproved === false ? ', ожидает подтверждения владельца' : ''}).`
       );
     } catch (err) {
       setStaffActionMsg(err instanceof Error ? err.message : 'Ошибка смены статуса');
+    }
+  };
+
+  const handleToggleOwnerApproval = async (u: UserAccount) => {
+    setStaffActionMsg('');
+    const nextApproved = u.ownerApproved === false;
+    try {
+      const updated = await apiRequest<UserAccount>(`/api/users/${u.id}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ ownerApproved: nextApproved }),
+      });
+      onUserUpdated(updated);
+      setStaffActionMsg(
+        nextApproved
+          ? `Владелец подтвердил допуск сотрудника ${updated.name} к приложению.`
+          : `Подтверждение доступа сотрудника ${updated.name} отозвано владельцем.`
+      );
+    } catch (err) {
+      setStaffActionMsg(err instanceof Error ? err.message : 'Ошибка изменения подтверждения');
     }
   };
 
@@ -505,12 +562,23 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     setSysBusy(true);
     setSysMsg('');
     try {
-      const res = await apiRequest<{
-        updateAvailable: boolean;
-        message: string;
-        checkedAt: string;
-      }>('/api/system/check-updates', { method: 'POST' });
+      const res = await apiRequest<UpdateCheckResponse>('/api/system/check-updates', {
+        method: 'POST',
+        body: JSON.stringify({
+          githubRepo: sysSettings.githubRepo || '',
+          githubBranch: sysSettings.githubBranch || 'main',
+        }),
+      });
       setUpdateCheckResult(res);
+      setSysSettings((prev) => ({
+        ...prev,
+        githubRepo: res.githubRepo ?? prev.githubRepo,
+        githubBranch: res.githubBranch ?? prev.githubBranch,
+        latestReleaseTag: res.latestReleaseTag || prev.latestReleaseTag,
+        latestReleaseUrl: res.latestReleaseUrl || prev.latestReleaseUrl,
+        latestDmgUrl: res.latestDmgUrl || prev.latestDmgUrl,
+        latestExeUrl: res.latestExeUrl || prev.latestExeUrl,
+      }));
     } catch (err) {
       setSysMsg(err instanceof Error ? err.message : 'Ошибка проверки обновлений');
     } finally {
@@ -522,14 +590,71 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
     setSysBusy(true);
     setSysMsg('');
     try {
-      const res = await apiRequest<{ ok: boolean; message: string }>('/api/system/apply-update', {
+      const res = await apiRequest<{
+        ok: boolean;
+        message: string;
+        newCommit?: string;
+        updatedAt?: string;
+      }>('/api/system/apply-update', {
         method: 'POST',
+        body: JSON.stringify({
+          githubRepo: sysSettings.githubRepo || '',
+          githubBranch: sysSettings.githubBranch || 'main',
+        }),
       });
       setSysMsg(res.message);
+      if (res.newCommit) {
+        setSysInfo((prev) => (prev ? { ...prev, commitHash: res.newCommit! } : prev));
+      }
+      setUpdateCheckResult((prev) =>
+        prev ? { ...prev, updateAvailable: false, message: res.message } : prev
+      );
     } catch (err) {
       setSysMsg(err instanceof Error ? err.message : 'Не удалось применить обновление');
     } finally {
       setSysBusy(false);
+    }
+  };
+
+  const handleDesktopGithubInstall = async (url?: string, fileName?: string) => {
+    if (!url || !fileName) return;
+    if (window.praviloDesktop?.downloadInstaller) {
+      setDesktopReleaseBusy(true);
+      setSysMsg('');
+      try {
+        const res = await window.praviloDesktop.downloadInstaller({ url, fileName });
+        setSysMsg(`Установщик ${res.fileName} скачан и запущен (${res.savedPath}).`);
+      } catch (err) {
+        setSysMsg(err instanceof Error ? err.message : 'Ошибка загрузки установщика');
+      } finally {
+        setDesktopReleaseBusy(false);
+      }
+      return;
+    }
+    if (window.praviloDesktop?.openGithubUrl) {
+      await window.praviloDesktop.openGithubUrl(url).catch(() => undefined);
+    }
+  };
+
+  const handleDownloadLocalInstaller = async (inst: LocalInstallerAsset) => {
+    setSysMsg('');
+    try {
+      const token = getAuthToken();
+      const resp = await fetch(inst.downloadUrl, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
+      if (!resp.ok) throw new Error('Не удалось скачать файл установщика');
+      const blob = await resp.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = inst.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      setSysMsg(err instanceof Error ? err.message : 'Ошибка скачивания установщика');
     }
   };
 
@@ -558,7 +683,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
   const filteredUsers = users.filter((u) => {
     const isFired = u.employmentStatus === 'fired' || !u.active;
-    if (staffFilter === 'working') return !isFired;
+    const isPending =
+      !isFired && (u.role === 'admin' || u.role === 'trainer') && u.ownerApproved === false;
+    if (staffFilter === 'working') return !isFired && !isPending;
+    if (staffFilter === 'pending') return isPending;
     if (staffFilter === 'fired') return isFired;
     return true;
   });
@@ -1275,12 +1403,13 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                 <Shield className="w-4 h-4 st-accent-text" />
                 <span>Персонал, клиенты и статусы доступа</span>
               </div>
-              <div className="flex items-center gap-1 p-1 rounded-lg st-surface-muted border st-border text-xs">
+              <div className="flex flex-wrap items-center gap-1 p-1 rounded-lg st-surface-muted border st-border text-xs">
                 {(
                   [
                     ['all', 'Все'],
                     ['working', 'Работают / Активные'],
-                    ['fired', 'Уволенные / Закрыт'],
+                    ['pending', 'Ожидают подтверждения'],
+                    ['fired', 'Уволенные / Архив'],
                   ] as const
                 ).map(([fk, fl]) => (
                   <button
@@ -1297,6 +1426,10 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               </div>
             </div>
 
+            <div className="p-2.5 rounded-lg st-surface-muted border st-border text-[11px] st-muted leading-snug">
+              В приложения тренера и администратора допускаются только подтверждённые владельцем активные сотрудники. При увольнении доступ немедленно закрывается, а учётная запись сохраняется в базе на случай возврата сотрудника.
+            </div>
+
             {staffActionMsg && (
               <div className="p-3 rounded-lg st-accent-soft border border-current text-xs font-medium">
                 {staffActionMsg}
@@ -1306,6 +1439,8 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             <div className="max-h-72 overflow-y-auto divide-y st-border border st-border rounded-xl">
               {filteredUsers.map((u) => {
                 const isFired = u.employmentStatus === 'fired' || !u.active;
+                const isStaffAccount = u.role === 'admin' || u.role === 'trainer';
+                const isOwnerConfirmed = u.ownerApproved !== false;
                 const canManageTarget =
                   isOwner || (currentUser.role === 'admin' && (u.role === 'trainer' || u.role === 'client'));
                 const isSelf = u.id === currentUser.id;
@@ -1328,10 +1463,16 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                             className={`text-[11px] font-medium ${
                               isFired
                                 ? 'text-rose-600 dark:text-rose-400'
+                                : isStaffAccount && !isOwnerConfirmed
+                                ? 'text-amber-600 dark:text-amber-400'
                                 : 'text-emerald-600 dark:text-emerald-400'
                             }`}
                           >
-                            {isFired ? '● Уволен (доступ закрыт)' : '● Работает'}
+                            {isFired
+                              ? '● Уволен (в архиве, вход закрыт)'
+                              : isStaffAccount && !isOwnerConfirmed
+                              ? '● Работает (ожидает подтверждения владельца)'
+                              : '● Активен (допуск разрешён)'}
                           </span>
                         </div>
                         <div className="text-[11px] st-muted mt-0.5 font-mono">
@@ -1344,6 +1485,23 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
                       {canManageTarget && (
                         <div className="flex flex-wrap items-center gap-1.5 shrink-0">
+                          {isOwner && isStaffAccount && !isSelf && (
+                            <button
+                              type="button"
+                              onClick={() => handleToggleOwnerApproval(u)}
+                              className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border cursor-pointer whitespace-nowrap font-medium ${
+                                isOwnerConfirmed
+                                  ? 'border-amber-300 dark:border-amber-700 text-amber-700 dark:text-amber-300'
+                                  : 'border-emerald-400 bg-emerald-600 text-white'
+                              }`}
+                            >
+                              <CheckCircle2 className="w-3 h-3" />
+                              <span>
+                                {isOwnerConfirmed ? 'Снять подтверждение' : 'Подтвердить доступ'}
+                              </span>
+                            </button>
+                          )}
+
                           <button
                             type="button"
                             onClick={() => openEditUserRow(u)}
@@ -1613,10 +1771,11 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             <div className="p-4 rounded-xl st-surface-muted border st-border space-y-3">
               <div className="flex flex-wrap items-center justify-between gap-2">
                 <div>
-                  <div className="text-sm font-semibold">Версия сервера и простое обновление</div>
+                  <div className="text-sm font-semibold">Версия сервера и обновление с GitHub</div>
                   <div className="text-xs st-muted font-mono tabular-nums mt-0.5">
                     Версия: {sysInfo?.version || '1.2.0'} · Сборка: {sysInfo?.commitHash || '...'} ·
                     Node {sysInfo?.nodeVersion || '...'} · Порт {sysInfo?.port || 3000}
+                    {desktopAppVersion ? ` · Desktop v${desktopAppVersion}` : ''}
                   </div>
                 </div>
                 <div className="flex flex-wrap items-center gap-2">
@@ -1636,7 +1795,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium cursor-pointer disabled:opacity-50"
                   >
                     <RefreshCw className={`w-3.5 h-3.5 ${sysBusy ? 'animate-spin' : ''}`} />
-                    <span>Проверить обновления</span>
+                    <span>Проверить обновления на GitHub</span>
                   </button>
                 </div>
               </div>
@@ -1644,15 +1803,25 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
               {updateCheckResult && (
                 <div className="p-3 rounded-lg st-surface border st-border text-xs space-y-2">
                   <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span>{updateCheckResult.message}</span>
+                    <div className="space-y-0.5">
+                      <div className="font-medium">{updateCheckResult.message}</div>
+                      {(updateCheckResult.remoteCommit || updateCheckResult.latestReleaseTag) && (
+                        <div className="text-[11px] st-muted font-mono">
+                          {updateCheckResult.githubRepo}@{updateCheckResult.githubBranch}
+                          {updateCheckResult.remoteCommit ? ` · commit ${updateCheckResult.remoteCommit}` : ''}
+                          {updateCheckResult.latestReleaseTag ? ` · релиз ${updateCheckResult.latestReleaseTag}` : ''}
+                          {updateCheckResult.checkedAt ? ` · проверено ${updateCheckResult.checkedAt}` : ''}
+                        </div>
+                      )}
+                    </div>
                     {updateCheckResult.updateAvailable && (
                       <button
                         type="button"
                         disabled={sysBusy}
                         onClick={handleApplyUpdate}
-                        className="px-3 py-1.5 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer"
+                        className="px-3 py-1.5 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer disabled:opacity-50"
                       >
-                        Установить обновление (Git + Build)
+                        Установить обновление с GitHub
                       </button>
                     )}
                   </div>
@@ -1672,8 +1841,55 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
             >
               <div className="flex items-center gap-2 text-sm font-semibold">
                 <Globe className="w-4 h-4 st-accent-text" />
-                <span>Безопасность входа, домен и туннелирование</span>
+                <span>GitHub-автообновление, безопасность входа и домен</span>
               </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs st-muted mb-1">
+                    Репозиторий GitHub (owner/repo)
+                  </label>
+                  <input
+                    type="text"
+                    value={sysSettings.githubRepo || ''}
+                    onChange={(e) =>
+                      setSysSettings((s) => ({ ...s, githubRepo: e.target.value }))
+                    }
+                    placeholder="owner/etalon-pravilo-studio"
+                    className="w-full px-3 py-2 text-xs font-mono rounded-lg border st-border st-surface"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs st-muted mb-1">
+                    Ветка обновлений на GitHub
+                  </label>
+                  <input
+                    type="text"
+                    value={sysSettings.githubBranch || 'main'}
+                    onChange={(e) =>
+                      setSysSettings((s) => ({ ...s, githubBranch: e.target.value }))
+                    }
+                    placeholder="main"
+                    className="w-full px-3 py-2 text-xs font-mono rounded-lg border st-border st-surface"
+                  />
+                </div>
+              </div>
+
+              <label className="flex items-center gap-2.5 text-xs cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={sysSettings.autoCheckUpdates !== false}
+                  onChange={(e) =>
+                    setSysSettings((s) => ({
+                      ...s,
+                      autoCheckUpdates: e.target.checked,
+                    }))
+                  }
+                />
+                <span>
+                  Автоматически проверять новые коммиты и релизы на GitHub
+                </span>
+              </label>
 
               <label className="flex items-center gap-2.5 text-xs cursor-pointer">
                 <input
@@ -1762,21 +1978,115 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
 
             {/* Desktop Client Launch & Installer Kit (Mac Apple Silicon M1+ & Windows .exe) */}
             <div className="p-4 rounded-xl st-surface-muted border st-border space-y-3 text-xs">
-              <div className="flex items-center gap-2 font-semibold text-sm">
-                <Monitor className="w-4 h-4 st-accent-text" />
-                <span>Установщики для ПК: macOS (M1+ Apple Silicon .dmg) и Windows (.exe)</span>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 font-semibold text-sm">
+                  <Monitor className="w-4 h-4 st-accent-text" />
+                  <span>Установщики для ПК: macOS (M1+ Apple Silicon .dmg) и Windows (.exe)</span>
+                </div>
+                {sysSettings.latestReleaseTag && (
+                  <span className="px-2 py-0.5 rounded st-surface border st-border font-mono text-[11px]">
+                    Релиз GitHub: {sysSettings.latestReleaseTag}
+                  </span>
+                )}
               </div>
               <p className="st-muted leading-relaxed">
-                Сборка включает встроенный автономный сервер, поддержку Web Bluetooth (весов, тензодатчиков конечностей, пульсометра, миодатчиков и тонометра) и автоматическое хранение базы в локальной папке пользователя без необходимости установки Node.js на компьютер студии.
+                Сборка включает встроенный автономный сервер, поддержку штатного и Web Bluetooth (весы, тензодатчики конечностей, пульсометр, миодатчики и тонометр) и локальное хранение базы. При каждом push в <span className="font-mono">main</span> или теге <span className="font-mono">v*</span> GitHub Actions автоматически собирает и публикует готовые <span className="font-mono">.dmg</span> (M1+ с переносом в «Программы») и <span className="font-mono">.exe</span> (Windows).
               </p>
+
+              {/* Direct installer downloads from GitHub Releases or local release-desktop/ */}
+              {(updateCheckResult?.latestDmgUrl ||
+                sysSettings.latestDmgUrl ||
+                updateCheckResult?.latestExeUrl ||
+                sysSettings.latestExeUrl ||
+                (sysInfo?.localInstallers && sysInfo.localInstallers.length > 0)) && (
+                <div className="p-3 rounded-lg st-surface border st-border space-y-2">
+                  <div className="font-semibold">Готовые установочные файлы:</div>
+                  <div className="flex flex-wrap gap-2">
+                    {(updateCheckResult?.latestDmgUrl || sysSettings.latestDmgUrl) && (
+                      window.praviloDesktop?.downloadInstaller ? (
+                        <button
+                          type="button"
+                          disabled={desktopReleaseBusy}
+                          onClick={() =>
+                            handleDesktopGithubInstall(
+                              updateCheckResult?.latestDmgUrl || sysSettings.latestDmgUrl,
+                              updateCheckResult?.latestDmgName ||
+                                `EtalonPravilo-${sysSettings.latestReleaseTag || 'latest'}-mac-arm64.dmg`
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium cursor-pointer disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Скачать и открыть macOS M1+ (.dmg)</span>
+                        </button>
+                      ) : (
+                        <a
+                          href={updateCheckResult?.latestDmgUrl || sysSettings.latestDmgUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Скачать macOS M1+ (.dmg)</span>
+                        </a>
+                      )
+                    )}
+
+                    {(updateCheckResult?.latestExeUrl || sysSettings.latestExeUrl) && (
+                      window.praviloDesktop?.downloadInstaller ? (
+                        <button
+                          type="button"
+                          disabled={desktopReleaseBusy}
+                          onClick={() =>
+                            handleDesktopGithubInstall(
+                              updateCheckResult?.latestExeUrl || sysSettings.latestExeUrl,
+                              updateCheckResult?.latestExeName ||
+                                `EtalonPravilo-${sysSettings.latestReleaseTag || 'latest'}-win-x64.exe`
+                            )
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium cursor-pointer disabled:opacity-50"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Скачать и запустить Windows (.exe)</span>
+                        </button>
+                      ) : (
+                        <a
+                          href={updateCheckResult?.latestExeUrl || sysSettings.latestExeUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium"
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>Скачать Windows (.exe)</span>
+                        </a>
+                      )
+                    )}
+
+                    {sysInfo?.localInstallers?.map((inst) => (
+                      <button
+                        key={inst.fileName}
+                        type="button"
+                        onClick={() => handleDownloadLocalInstaller(inst)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface-muted text-xs font-medium cursor-pointer"
+                      >
+                        <Download className="w-3.5 h-3.5 st-accent-text" />
+                        <span>
+                          {inst.fileName} ({Math.round(inst.sizeBytes / (1024 * 1024))} МБ)
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
                 <div className="p-2.5 rounded-lg st-surface border st-border space-y-1">
-                  <div className="font-semibold">macOS (Apple M1 / M2 / M3 / M4)</div>
+                  <div className="font-semibold">macOS (Apple Silicon M1 / M2 / M3 / M4)</div>
                   <div className="font-mono text-[11px] st-accent-text">
                     npm run desktop:mac
                   </div>
                   <div className="text-[11px] st-muted">
-                    Собирает <span className="font-mono">.dmg</span> и <span className="font-mono">.zip</span> под архитектуру <span className="font-mono">arm64</span> в <span className="font-mono">release-desktop/</span>.
+                    Собирает <span className="font-mono">.dmg</span> (<span className="font-mono">arm64</span>) с окном переноса ярлыка в папку «Программы» (<span className="font-mono">Applications</span>) и <span className="font-mono">.zip</span> в <span className="font-mono">release-desktop/</span>.
                   </div>
                 </div>
                 <div className="p-2.5 rounded-lg st-surface border st-border space-y-1">
@@ -1785,7 +2095,7 @@ export const ProfileSettingsModal: React.FC<ProfileSettingsModalProps> = ({
                     npm run desktop:win
                   </div>
                   <div className="text-[11px] st-muted">
-                    Собирает мастер установки <span className="font-mono">.exe</span> (NSIS) и портативный <span className="font-mono">.exe</span> в <span className="font-mono">release-desktop/</span>.
+                    Собирает мастер установки <span className="font-mono">.exe</span> (NSIS с ярлыком и выбором папки) и портативный <span className="font-mono">.exe</span> в <span className="font-mono">release-desktop/</span>.
                   </div>
                 </div>
               </div>

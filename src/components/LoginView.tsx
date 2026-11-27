@@ -9,12 +9,13 @@ import {
   Smartphone,
   Scale,
 } from 'lucide-react';
-import type { BrandAboutInfo, UserAccount } from '../types';
+import type { BrandAboutInfo, LegalAgreementDoc, UserAccount } from '../types';
 import { apiRequest, setAuthToken } from '../utils/api';
 import { DEFAULT_BRAND_ABOUT } from '../utils/brandAbout';
 import { PWAInstallButton } from './PWAInstallButton';
 import { AndroidAppsModal } from './AndroidAppsModal';
 import { LegalAgreementsModal } from './LegalAgreementsModal';
+import { setActiveLegalBundle } from '../utils/legalAgreements';
 import {
   applyAndroidAppManifestToDocument,
   getActiveAndroidAppFlavor,
@@ -61,6 +62,21 @@ export const LoginView: React.FC<LoginViewProps> = ({
   }, [activeAndroidFlavor, publicBrand.brandName]);
 
   useEffect(() => {
+    let cancelled = false;
+    fetch('/api/public/legal-agreements')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res: { documents?: LegalAgreementDoc[]; bundleVersion?: string } | null) => {
+        if (!cancelled && res && typeof res === 'object') {
+          setActiveLegalBundle(res.documents, res.bundleVersion);
+        }
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     if (brandAbout) {
       setPublicBrand(brandAbout);
       return;
@@ -89,7 +105,12 @@ export const LoginView: React.FC<LoginViewProps> = ({
       const resp = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ login: l, password: p, ...(code ? { emailCode: code } : {}) }),
+        body: JSON.stringify({
+          login: l,
+          password: p,
+          ...(code ? { emailCode: code } : {}),
+          appFlavor: activeAndroidFlavor || 'web',
+        }),
       });
       const data = await resp.json();
       if (!resp.ok) {

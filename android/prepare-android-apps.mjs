@@ -80,6 +80,20 @@ for (const app of spec.apps) {
     'utf-8'
   );
 
+  // Copy Android Native Bluetooth Bridge (BLE GATT + Classic SPP for WebView / Capacitor)
+  const nativeBtSrc = path.join(ROOT_DIR, 'android', 'native-bluetooth');
+  const nativeBtDest = path.join(appDir, 'native-bluetooth');
+  if (fs.existsSync(nativeBtSrc)) {
+    fs.mkdirSync(nativeBtDest, { recursive: true });
+    for (const file of fs.readdirSync(nativeBtSrc)) {
+      let content = fs.readFileSync(path.join(nativeBtSrc, file), 'utf-8');
+      if (file.endsWith('.java')) {
+        content = content.replace('package ru.etalonpravilo.app;', `package ${app.packageId};`);
+      }
+      fs.writeFileSync(path.join(nativeBtDest, file), content, 'utf-8');
+    }
+  }
+
   // Helper build script for this flavor
   const buildSh = `#!/usr/bin/env bash
 set -euo pipefail

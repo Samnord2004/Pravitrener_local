@@ -1,8 +1,123 @@
-const { app, BrowserWindow, Menu, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, ipcMain, shell, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const http = require('http');
+const https = require('https');
 const { spawn } = require('child_process');
+const nativeBt = require('./nativeBluetoothDesktop.cjs');
+
+const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]{1,60}\/[A-Za-z0-9_.-]{1,100}$/;
+const ALLOWED_GITHUB_HOSTS = new Set([
+  'api.github.com',
+  'github.com',
+  'codeload.github.com',
+  'objects.githubusercontent.com',
+  'release-assets.githubusercontent.com',
+]);
+
+function compareSemver(a, b) {
+  const pa = String(a || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  const pb = String(b || '').replace(/^v/i, '').split('.').map((n) => parseInt(n, 10) || 0);
+  for (let i = 0; i < Math.max(pa.length, pb.length, 3); i++) {
+    const da = pa[i] || 0;
+    const db = pb[i] || 0;
+    if (da > db) return 1;
+    if (da < db) return -1;
+  }
+  return 0;
+}
+
+function httpsGetJsonAllowlisted(rawUrl) {
+  return new Promise((resolve, reject) => {
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return reject(new Error('Некорректный URL GitHub API'));
+    }
+    if (parsed.protocol !== 'https:' || !ALLOWED_GITHUB_HOSTS.has(parsed.hostname)) {
+      return reject(new Error('Неразрешённый домен для запроса обновлений'));
+    }
+    const req = https.get(
+      parsed.toString(),
+      {
+        headers: {
+          'User-Agent': `EtalonPraviloDesktop/${app.getVersion()}`,
+          Accept: 'application/vnd.github+json',
+        },
+        timeout: 10000,
+      },
+      (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          return httpsGetJsonAllowlisted(res.headers.location).then(resolve, reject);
+        }
+        const chunks = [];
+        res.on('data', (c) => chunks.push(c));
+        res.on('end', () => {
+          const text = Buffer.concat(chunks).toString('utf-8');
+          if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+            return reject(new Error(`GitHub API HTTP ${res.statusCode || 0}`));
+          }
+          try {
+            resolve(JSON.parse(text));
+          } catch {
+            reject(new Error('Некорректный JSON-ответ GitHub API'));
+          }
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('Таймаут запроса к GitHub')));
+  });
+}
+
+function downloadInstallerFile(rawUrl, destPath, hops = 0) {
+  return new Promise((resolve, reject) => {
+    if (hops > 5) return reject(new Error('Слишком много перенаправлений при скачивании'));
+    let parsed;
+    try {
+      parsed = new URL(rawUrl);
+    } catch {
+      return reject(new Error('Некорректный URL файла установки'));
+    }
+    if (parsed.protocol !== 'https:' || !ALLOWED_GITHUB_HOSTS.has(parsed.hostname)) {
+      return reject(new Error('Разрешено скачивание только с официальных серверов GitHub'));
+    }
+    const req = https.get(
+      parsed.toString(),
+      {
+        headers: { 'User-Agent': `EtalonPraviloDesktop/${app.getVersion()}` },
+        timeout: 60000,
+      },
+      (res) => {
+        if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+          res.resume();
+          return downloadInstallerFile(res.headers.location, destPath, hops + 1).then(resolve, reject);
+        }
+        if (!res.statusCode || res.statusCode < 200 || res.statusCode >= 300) {
+          res.resume();
+          return reject(new Error(`Ошибка скачивания установщика: HTTP ${res.statusCode || 0}`));
+        }
+        const tmpPath = `${destPath}.part`;
+        const out = fs.createWriteStream(tmpPath);
+        res.pipe(out);
+        out.on('finish', () => {
+          out.close(() => {
+            fs.renameSync(tmpPath, destPath);
+            resolve(destPath);
+          });
+        });
+        out.on('error', (err) => {
+          try { fs.rmSync(tmpPath, { force: true }); } catch { /* ignore */ }
+          reject(err);
+        });
+      }
+    );
+    req.on('error', reject);
+    req.on('timeout', () => req.destroy(new Error('Таймаут загрузки установщика')));
+  });
+}
 
 // Enable Web Bluetooth and Web Serial inside Electron Desktop
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
@@ -146,7 +261,7 @@ function createWindow() {
     },
   });
 
-  // Web Bluetooth device selection handler for Mi Scale 2, ESP32, Wahoo, MYOblue, B05
+  // Bluetooth device selection handler for Desktop (interactive list + auto-match)
   let btScanTimer = null;
   let pendingBtCallback = null;
   let lastBtDeviceList = [];
@@ -155,6 +270,12 @@ function createWindow() {
     event.preventDefault();
     pendingBtCallback = callback;
     lastBtDeviceList = deviceList || [];
+
+    try {
+      mainWindow.webContents.send('desktop:webble-devices', lastBtDeviceList);
+    } catch {
+      // ignore closed webContents
+    }
 
     const preferred = lastBtDeviceList.find((d) =>
       /tickr|wahoo|mibfs|mi scale|miscale|esp32|pravilo|myoblue|b05|bpm|heart|blemodule|yk-|yonker|ibpa|yuwell|omron|beurer|contec|sinocare|medisana|blesmart|blood/i.test(
@@ -192,6 +313,24 @@ function createWindow() {
     }
   });
 
+  ipcMain.handle('desktop:webble-pick', (_ev, deviceId) => {
+    if (btScanTimer) {
+      clearTimeout(btScanTimer);
+      btScanTimer = null;
+    }
+    if (pendingBtCallback) {
+      const cb = pendingBtCallback;
+      pendingBtCallback = null;
+      try {
+        cb(String(deviceId || ''));
+        return true;
+      } catch {
+        return false;
+      }
+    }
+    return false;
+  });
+
   mainWindow.on('closed', () => {
     if (btScanTimer) {
       clearTimeout(btScanTimer);
@@ -206,7 +345,14 @@ function createWindow() {
   });
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
-    shell.openExternal(url);
+    try {
+      const parsed = new URL(url);
+      if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
+        shell.openExternal(parsed.toString());
+      }
+    } catch {
+      // ignore invalid URLs
+    }
     return { action: 'deny' };
   });
 
@@ -218,6 +364,17 @@ function createWindow() {
       label: 'Студия',
       submenu: [
         { label: 'Обновить окно', accelerator: 'CmdOrCtrl+R', click: () => mainWindow?.reload() },
+        {
+          label: `Версия приложения (${app.getVersion()})`,
+          click: () => {
+            dialog.showMessageBox(mainWindow, {
+              type: 'info',
+              title: 'ЭТАЛОН ПРАВИЛО',
+              message: `ЭТАЛОН ПРАВИЛО — v${app.getVersion()}`,
+              detail: `Платформа: ${process.platform} (${process.arch}).\nДля проверки обновлений с GitHub откройте Настройки -> Сервер и обновления.`,
+            }).catch(() => undefined);
+          },
+        },
         {
           label: 'Подключить локальный сервер (127.0.0.1:3000)',
           click: () => {
@@ -253,6 +410,13 @@ function createWindow() {
 }
 
 ipcMain.handle('desktop:get-config', () => loadConfig());
+ipcMain.handle('desktop:get-app-info', () => ({
+  version: app.getVersion(),
+  platform: process.platform,
+  arch: process.arch,
+  isPackaged: app.isPackaged,
+}));
+
 ipcMain.handle('desktop:set-server-url', (_ev, url) => {
   const cleanUrl = String(url || '').trim() || 'http://127.0.0.1:3000';
   const next = {
@@ -268,6 +432,80 @@ ipcMain.handle('desktop:set-server-url', (_ev, url) => {
   }
   return next;
 });
+
+ipcMain.handle('desktop:check-github-release', async (_ev, rawRepo) => {
+  const repo = String(rawRepo || '').trim();
+  if (!GITHUB_REPO_RE.test(repo)) {
+    throw new Error('Укажите репозиторий в формате owner/repo');
+  }
+  const currentVersion = app.getVersion();
+  const rel = await httpsGetJsonAllowlisted(`https://api.github.com/repos/${repo}/releases/latest`);
+  const assets = Array.isArray(rel?.assets) ? rel.assets : [];
+  const dmgAsset =
+    assets.find((a) => /\.dmg$/i.test(a.name || '') && /arm64|mac/i.test(a.name || '')) ||
+    assets.find((a) => /\.dmg$/i.test(a.name || ''));
+  const exeAsset =
+    assets.find((a) => /\.exe$/i.test(a.name || '') && !/portable/i.test(a.name || '')) ||
+    assets.find((a) => /\.exe$/i.test(a.name || ''));
+
+  const latestTag = String(rel?.tag_name || '').trim();
+  const latestVersion = latestTag.replace(/^v/i, '');
+  const updateAvailable = latestVersion ? compareSemver(latestVersion, currentVersion) > 0 : false;
+  const preferredAsset = process.platform === 'darwin' ? dmgAsset : process.platform === 'win32' ? exeAsset : null;
+
+  return {
+    currentVersion,
+    latestTag,
+    latestVersion,
+    updateAvailable,
+    releasePageUrl: typeof rel?.html_url === 'string' ? rel.html_url : '',
+    publishedAt: typeof rel?.published_at === 'string' ? rel.published_at : '',
+    dmgUrl: dmgAsset?.browser_download_url || '',
+    dmgName: dmgAsset?.name || '',
+    exeUrl: exeAsset?.browser_download_url || '',
+    exeName: exeAsset?.name || '',
+    preferredAssetUrl: preferredAsset?.browser_download_url || '',
+    preferredAssetName: preferredAsset?.name || '',
+  };
+});
+
+ipcMain.handle('desktop:download-installer', async (_ev, payload) => {
+  const rawUrl = String(payload?.url || '').trim();
+  const requestedName = path.basename(String(payload?.fileName || '').trim() || 'EtalonPraviloInstaller');
+  if (!/\.(dmg|exe|zip)$/i.test(requestedName)) {
+    throw new Error('Недопустимое расширение файла установщика');
+  }
+  const safeName = requestedName.replace(/[^A-Za-z0-9._-]/g, '_');
+  const downloadsDir = app.getPath('downloads');
+  fs.mkdirSync(downloadsDir, { recursive: true });
+  const destPath = path.resolve(downloadsDir, safeName);
+  if (!destPath.startsWith(path.resolve(downloadsDir) + path.sep)) {
+    throw new Error('Некорректный путь сохранения установщика');
+  }
+  await downloadInstallerFile(rawUrl, destPath);
+  await shell.openPath(destPath);
+  return { ok: true, savedPath: destPath, fileName: safeName };
+});
+
+ipcMain.handle('desktop:open-github-url', async (_ev, rawUrl) => {
+  const parsed = new URL(String(rawUrl || '').trim());
+  if (parsed.protocol !== 'https:' || !ALLOWED_GITHUB_HOSTS.has(parsed.hostname)) {
+    throw new Error('Разрешены только официальные ссылки GitHub HTTPS');
+  }
+  await shell.openExternal(parsed.toString());
+  return true;
+});
+
+ipcMain.handle('desktop:bt-list', async () => nativeBt.listDevices());
+ipcMain.handle('desktop:bt-connect', async (_ev, params) =>
+  nativeBt.connectDevice(params || {}, (payload) => {
+    if (mainWindow && !mainWindow.isDestroyed()) {
+      mainWindow.webContents.send('desktop:bt-event', payload);
+    }
+  })
+);
+ipcMain.handle('desktop:bt-disconnect', async (_ev, type) => nativeBt.disconnectDevice(type));
+ipcMain.handle('desktop:bt-write', async (_ev, type, cmd) => nativeBt.writeCommand(type, cmd));
 
 app.whenReady().then(() => {
   createWindow();

@@ -29,3 +29,13 @@
    ```
 2. В папке `release-android/` будут созданы три каталога (`admin/`, `trainer/`, `client/`) с готовыми `capacitor.config.json`, `twa-manifest.json`, иконками и скриптом `build-apk.sh`.
 3. Для сборки подписанного `.apk`/`.aab` в соответствующей папке выполните `./build-apk.sh` (требуются JDK 17+ и Android SDK) или откройте проект через Capacitor / Android Studio.
+
+## Вариант 3. Штатный Bluetooth внутри Android APK (без Web BLE)
+
+В каждом каталоге `release-android/{flavor}/native-bluetooth/` (и в `android/native-bluetooth/`) подготовлены:
+- `BluetoothBridge.java` — нативный адаптер `android.bluetooth.*` (поддерживает BLE GATT `0x180D / 0x181B / 0x1810`, BLE-маяки Mi Scale 2 и Bluetooth Classic SPP RFCOMM);
+- `MainActivity.java` — регистрация `EtalonNativeBluetooth` в WebView;
+- `AndroidManifest.permissions.xml` — системные разрешения Android 6–14+ (`BLUETOOTH_SCAN`, `BLUETOOTH_CONNECT`, `ACCESS_FINE_LOCATION`).
+
+Скопируйте эти файлы в `android/app/src/main/` вашего Capacitor-проекта — веб-интерфейс автоматически обнаружит `window.EtalonNativeBluetooth` и позволит подключать датчики по штатному Bluetooth телефона.
+

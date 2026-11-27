@@ -13,6 +13,9 @@ const distDest = path.join(bundleDir, 'dist');
 const serverEntry = path.join(projectRoot, 'server.ts');
 const serverOut = path.join(bundleDir, 'server.cjs');
 
+console.log('[desktop:prepare] 0/3 Ensuring desktop icons & DMG background assets...');
+execSync('node scripts/generate-desktop-icons.mjs', { cwd: projectRoot, stdio: 'inherit' });
+
 console.log('[desktop:prepare] 1/3 Building frontend bundle (vite build)...');
 execSync('npm run build', { cwd: projectRoot, stdio: 'inherit' });
 

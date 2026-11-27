@@ -1,6 +1,8 @@
 import express from 'express';
 import http from 'http';
+import https from 'https';
 import fs from 'fs';
+import os from 'os';
 import path from 'path';
 import crypto from 'crypto';
 import { execFile } from 'child_process';
@@ -22,6 +24,8 @@ import type {
   Exercise,
   ExerciseLimbAngleMatrix,
   WorkoutProgram,
+  ClientHandoverMode,
+  ClientHandoverRecord,
   ClientProfile,
   TrainingSessionRecord,
   NotificationTemplate,
@@ -31,6 +35,8 @@ import type {
   MessengerChannel,
   MessengerMessage,
   LiveHardwarePacket,
+  EquipmentType,
+  NativeBluetoothProtocol,
   TrainerBlogPost,
   TrainerBlogPlatform,
   RatingReview,
@@ -40,8 +46,19 @@ import type {
   LegalAcceptanceRecord,
 } from './src/types.ts';
 import {
+  listNativeBluetoothDevices,
+  connectNativeBluetoothDevice,
+  disconnectNativeBluetoothDevice,
+  writeNativeBluetoothCommand,
+  getActiveNativeBluetoothSummary,
+} from './server/nativeBluetooth.ts';
+import {
   CURRENT_LEGAL_BUNDLE_VERSION,
+  LEGAL_AGREEMENTS,
   getLegalAgreementsForRole,
+  incrementLegalBundleVersion,
+  mergeLegalAgreements,
+  sanitizeLegalDocumentsInput,
 } from './src/utils/legalAgreements.ts';
 import { calculateMiScale2Metrics } from './src/utils/miScale2.ts';
 import { isValidStudioPhotoSrc } from './src/utils/reviews.ts';
@@ -232,17 +249,44 @@ function redactClientForTrainer(client: ClientProfile): ClientProfile {
 
 function getTrainerAssignedClientIds(db: StudioDatabase, trainerId: string, trainerName: string): Set<string> {
   const ids = new Set<string>();
-  db.bookings.forEach((b) => {
-    if (b.trainerId === trainerId && b.clientId) ids.add(b.clientId);
-  });
-  db.sessions.forEach((s) => {
-    if (s.trainerId === trainerId && s.clientId) ids.add(s.clientId);
-  });
-  db.programs.forEach((p) => {
-    if ((p.createdByUserId === trainerId || p.createdBy === trainerName) && p.clientId) {
-      ids.add(p.clientId);
+  const revokedByClient = new Map<string, Set<string>>();
+
+  db.clients.forEach((c) => {
+    if (Array.isArray(c.revokedTrainerIds) && c.revokedTrainerIds.length > 0) {
+      revokedByClient.set(c.id, new Set(c.revokedTrainerIds));
+    }
+    if (c.assignedTrainerId === trainerId) {
+      ids.add(c.id);
+    }
+    if (Array.isArray(c.guestTrainerIds) && c.guestTrainerIds.includes(trainerId)) {
+      ids.add(c.id);
     }
   });
+
+  db.bookings.forEach((b) => {
+    if (b.trainerId === trainerId && b.clientId && b.status !== 'cancelled') {
+      ids.add(b.clientId);
+    }
+  });
+
+  db.sessions.forEach((s) => {
+    if (s.trainerId === trainerId && s.clientId) {
+      const revoked = revokedByClient.get(s.clientId);
+      if (!revoked || !revoked.has(trainerId)) {
+        ids.add(s.clientId);
+      }
+    }
+  });
+
+  db.programs.forEach((p) => {
+    if ((p.createdByUserId === trainerId || p.createdBy === trainerName) && p.clientId) {
+      const revoked = revokedByClient.get(p.clientId);
+      if (!revoked || !revoked.has(trainerId)) {
+        ids.add(p.clientId);
+      }
+    }
+  });
+
   return ids;
 }
 
@@ -580,6 +624,9 @@ async function startServer() {
       if (!user || !user.active || user.employmentStatus === 'fired') {
         return res.status(401).json({ error: 'Доступ к приложению закрыт или аккаунт отключён' });
       }
+      if ((user.role === 'admin' || user.role === 'trainer') && user.ownerApproved === false) {
+        return res.status(403).json({ error: 'Доступ к приложению сотрудника ожидает подтверждения владельца' });
+      }
       if ((payload.tokenVersion ?? 1) !== (user.tokenVersion ?? 1)) {
         return res.status(401).json({ error: 'Сессия аннулирована после сброса пароля. Войдите заново.' });
       }
@@ -596,12 +643,13 @@ async function startServer() {
     res.json({ ok: true });
   });
 
-  // Login (supports login or email, enforces employmentStatus and optional E-mail 2FA)
+  // Login (supports login or email, enforces employmentStatus, ownerApproved, appFlavor, and optional E-mail 2FA)
   app.post('/api/auth/login', async (req, res) => {
-    const { login, password, emailCode } = req.body as {
+    const { login, password, emailCode, appFlavor } = req.body as {
       login?: string;
       password?: string;
       emailCode?: string;
+      appFlavor?: string;
     };
     if (!login || !password) {
       return res.status(400).json({ error: 'Введите логин (или E-mail) и пароль' });
@@ -616,7 +664,22 @@ async function startServer() {
     }
     if (!found.active || found.employmentStatus === 'fired') {
       return res.status(403).json({
-        error: 'Доступ к приложению закрыт (сотрудник уволен или аккаунт заблокирован). Обратитесь к владельцу.',
+        error: 'Доступ к приложению закрыт (сотрудник уволен). Учётная запись сохранена в базе на случай возврата — восстановить доступ может владелец.',
+      });
+    }
+    if ((found.role === 'admin' || found.role === 'trainer') && found.ownerApproved === false) {
+      return res.status(403).json({
+        error: 'Учётная запись сотрудника ещё не подтверждена владельцем. Дождитесь подтверждения доступа.',
+      });
+    }
+    if (appFlavor === 'trainer' && found.role !== 'trainer' && found.role !== 'owner') {
+      return res.status(403).json({
+        error: 'В приложение тренера могут войти только подтверждённые активные тренеры или владелец.',
+      });
+    }
+    if (appFlavor === 'admin' && found.role !== 'admin' && found.role !== 'owner') {
+      return res.status(403).json({
+        error: 'В приложение администратора могут войти только подтверждённые активные администраторы или владелец.',
       });
     }
     const valid = bcrypt.compareSync(password, found.passwordHash);
@@ -797,8 +860,13 @@ async function startServer() {
       );
     }
 
-    if (!user || !user.active || user.employmentStatus === 'fired') {
-      return res.status(404).json({ error: 'Активная учётная запись с таким логином или E-mail не найдена' });
+    if (
+      !user ||
+      !user.active ||
+      user.employmentStatus === 'fired' ||
+      ((user.role === 'admin' || user.role === 'trainer') && user.ownerApproved === false)
+    ) {
+      return res.status(404).json({ error: 'Активная подтверждённая учётная запись с таким логином или E-mail не найдена' });
     }
 
     const targetEmail = (email || user.email || '').trim();
@@ -874,8 +942,13 @@ async function startServer() {
     const user = db.users.find(
       (u) => u.login.toLowerCase() === q || (u.email && u.email.toLowerCase() === q)
     );
-    if (!user || !user.active || user.employmentStatus === 'fired') {
-      return res.status(404).json({ error: 'Учётная запись не найдена или заблокирована' });
+    if (
+      !user ||
+      !user.active ||
+      user.employmentStatus === 'fired' ||
+      ((user.role === 'admin' || user.role === 'trainer') && user.ownerApproved === false)
+    ) {
+      return res.status(404).json({ error: 'Учётная запись не найдена, не подтверждена владельцем или заблокирована' });
     }
     const check = verifyEmailCode({
       userId: user.id,
@@ -952,6 +1025,8 @@ async function startServer() {
         reviews: db.reviews || [],
         brandAbout: db.brandAbout || DEFAULT_BRAND_ABOUT,
         legalAcceptances: (db.legalAcceptances || []).filter((r) => r.userId === user.id),
+        legalDocuments: mergeLegalAgreements(db.legalDocuments),
+        legalBundleVersion: db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION,
       });
     }
 
@@ -961,7 +1036,9 @@ async function startServer() {
         .filter((c) => assignedClientIds.has(c.id))
         .map(redactClientForTrainer);
       const trainerBookings = db.bookings.filter((b) => b.trainerId === user.id);
-      const trainerSessions = db.sessions.filter((s) => s.trainerId === user.id);
+      const trainerSessions = db.sessions
+        .filter((s) => s.trainerId === user.id || assignedClientIds.has(s.clientId))
+        .map((s) => (s.trainerId === user.id ? s : { ...s, amountPaidRub: 0 }));
       const trainerSchedules = db.schedules.filter((s) => s.trainerId === user.id);
       const trainerClientSubscriptions = db.clientSubscriptions.filter((s) =>
         assignedClientIds.has(s.clientId)
@@ -1000,6 +1077,8 @@ async function startServer() {
         reviews: db.reviews || [],
         brandAbout: db.brandAbout || DEFAULT_BRAND_ABOUT,
         legalAcceptances: (db.legalAcceptances || []).filter((r) => r.userId === user.id),
+        legalDocuments: mergeLegalAgreements(db.legalDocuments),
+        legalBundleVersion: db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION,
       });
     }
 
@@ -1030,6 +1109,8 @@ async function startServer() {
         user.role === 'owner'
           ? db.legalAcceptances || []
           : (db.legalAcceptances || []).filter((r) => r.userId === user.id),
+      legalDocuments: mergeLegalAgreements(db.legalDocuments),
+      legalBundleVersion: db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION,
     });
   });
 
@@ -1332,6 +1413,8 @@ async function startServer() {
       .slice(0, 2)
       .map((p) => p[0]?.toUpperCase() || '')
       .join('');
+    const isStaffRole = role === 'admin' || role === 'trainer' || role === 'owner';
+    const ownerApproved = !isStaffRole || currentUser.role === 'owner';
     const newUser = {
       id: uid('u'),
       login: login.trim(),
@@ -1343,6 +1426,13 @@ async function startServer() {
       email: email?.trim().toLowerCase() || '',
       emailVerified: false,
       employmentStatus: 'working' as const,
+      ownerApproved,
+      ...(ownerApproved
+        ? {
+            ownerApprovedAt: new Date().toISOString().slice(0, 16).replace('T', ' '),
+            ownerApprovedBy: currentUser.name,
+          }
+        : {}),
       tokenVersion: 1,
       telegramHandle: telegramHandle?.trim() || '',
       avatarInitials: initials || 'ПП',
@@ -1369,6 +1459,7 @@ async function startServer() {
       password,
       role,
       employmentStatus,
+      ownerApproved,
       active,
       email,
       name,
@@ -1380,6 +1471,7 @@ async function startServer() {
       password?: string;
       role?: UserRole;
       employmentStatus?: 'working' | 'fired';
+      ownerApproved?: boolean;
       active?: boolean;
       email?: string;
       name?: string;
@@ -1393,7 +1485,11 @@ async function startServer() {
       return res.status(403).json({ error: 'Администратор не может назначать роль администратора или владельца' });
     }
 
-    if (user.id === currentUser.id && (employmentStatus === 'fired' || active === false)) {
+    if (typeof ownerApproved === 'boolean' && currentUser.role !== 'owner') {
+      return res.status(403).json({ error: 'Только владелец может подтверждать или отзывать допуск сотрудника к приложению' });
+    }
+
+    if (user.id === currentUser.id && (employmentStatus === 'fired' || active === false || ownerApproved === false)) {
       return res.status(400).json({ error: 'Нельзя уволить или заблокировать собственный аккаунт' });
     }
 
@@ -1418,6 +1514,8 @@ async function startServer() {
     }
 
     let revoked = false;
+    const wasFired = user.employmentStatus === 'fired' || !user.active;
+
     if (employmentStatus === 'fired') {
       user.employmentStatus = 'fired';
       user.active = false;
@@ -1426,10 +1524,26 @@ async function startServer() {
     } else if (employmentStatus === 'working') {
       user.employmentStatus = 'working';
       user.active = true;
+      if (wasFired && currentUser.role !== 'owner' && (user.role === 'trainer' || user.role === 'admin')) {
+        user.ownerApproved = false;
+      }
     } else if (typeof active === 'boolean') {
       user.active = active;
       user.employmentStatus = active ? 'working' : 'fired';
       if (!active) {
+        user.tokenVersion = (user.tokenVersion ?? 1) + 1;
+        revoked = true;
+      } else if (wasFired && currentUser.role !== 'owner' && (user.role === 'trainer' || user.role === 'admin')) {
+        user.ownerApproved = false;
+      }
+    }
+
+    if (typeof ownerApproved === 'boolean' && currentUser.role === 'owner') {
+      user.ownerApproved = ownerApproved;
+      if (ownerApproved) {
+        user.ownerApprovedAt = new Date().toISOString().slice(0, 16).replace('T', ' ');
+        user.ownerApprovedBy = currentUser.name;
+      } else {
         user.tokenVersion = (user.tokenVersion ?? 1) + 1;
         revoked = true;
       }
@@ -1461,7 +1575,12 @@ async function startServer() {
     if (revoked) {
       broadcast('user:access-revoked', {
         userId: user.id,
-        reason: user.employmentStatus === 'fired' ? 'Доступ к приложению закрыт (статус: уволен)' : 'Учётные данные обновлены',
+        reason:
+          user.employmentStatus === 'fired'
+            ? 'Доступ к приложению закрыт (статус: уволен)'
+            : user.ownerApproved === false
+            ? 'Подтверждение доступа отозвано владельцем'
+            : 'Учётные данные обновлены',
       });
     }
     res.json(safeUser);
@@ -2353,6 +2472,10 @@ async function startServer() {
         ? body.birthDate
         : `${Number(body.birthYear) || 1990}-05-14`;
     const birthYear = Number(birthDate.slice(0, 4)) || Number(body.birthYear) || 1990;
+    const assignedTrainer =
+      typeof body.assignedTrainerId === 'string' && body.assignedTrainerId.trim()
+        ? db.users.find((u) => u.id === body.assignedTrainerId && u.role === 'trainer')
+        : undefined;
     const client: ClientProfile = {
       id: uid('cl'),
       name: body.name || 'Новый клиент',
@@ -2362,6 +2485,9 @@ async function startServer() {
       email: body.email || '',
       telegram: body.telegram || '',
       studioId: body.studioId || db.studios[0].id,
+      ...(assignedTrainer
+        ? { assignedTrainerId: assignedTrainer.id, assignedTrainerName: assignedTrainer.name }
+        : {}),
       birthYear,
       birthDate,
       goal: body.goal || 'Общее вытяжение и декомпрессия',
@@ -2482,6 +2608,24 @@ async function startServer() {
     if (body.clientStatus === 'active' || body.clientStatus === 'inactive') {
       client.clientStatus = body.clientStatus;
     }
+    if (body.assignedTrainerId !== undefined) {
+      if (!body.assignedTrainerId) {
+        client.assignedTrainerId = undefined;
+        client.assignedTrainerName = undefined;
+      } else {
+        const nextTrainer = db.users.find(
+          (u) => u.id === body.assignedTrainerId && u.role === 'trainer'
+        );
+        if (!nextTrainer) {
+          return res.status(400).json({ error: 'Выбранный тренер не найден' });
+        }
+        client.assignedTrainerId = nextTrainer.id;
+        client.assignedTrainerName = nextTrainer.name;
+        if (Array.isArray(client.revokedTrainerIds)) {
+          client.revokedTrainerIds = client.revokedTrainerIds.filter((id) => id !== nextTrainer.id);
+        }
+      }
+    }
     if (typeof body.npsScore === 'number' && Number.isFinite(body.npsScore)) {
       client.npsScore = Math.max(0, Math.min(10, Math.round(body.npsScore)));
     }
@@ -2517,6 +2661,158 @@ async function startServer() {
     });
     runBirthdayPushDispatch({ clientIds: [client.id] });
     res.json(client);
+  });
+
+  app.post('/api/clients/:id/transfer', requireAuth(['owner', 'admin', 'trainer']), (req, res) => {
+    const currentUser = (req as express.Request & { currentUser: UserAccount }).currentUser;
+    const db = getDb();
+    const client = db.clients.find((c) => c.id === req.params.id);
+    if (!client) return res.status(404).json({ error: 'Клиент не найден' });
+
+    if (currentUser.role === 'trainer') {
+      const allowed = getTrainerAssignedClientIds(db, currentUser.id, currentUser.name);
+      if (!allowed.has(client.id)) {
+        return res.status(403).json({ error: 'Нет доступа к карточке этого клиента' });
+      }
+    }
+
+    const body = (req.body || {}) as {
+      toTrainerId?: string;
+      toStudioId?: string;
+      mode?: ClientHandoverMode;
+      changeClientStudio?: boolean;
+      transferUpcomingBookings?: boolean;
+      revokePreviousAccess?: boolean;
+      note?: string;
+    };
+
+    const mode: ClientHandoverMode = body.mode === 'guest_visit' ? 'guest_visit' : 'permanent';
+    const targetTrainer = db.users.find(
+      (u) =>
+        u.id === body.toTrainerId &&
+        u.role === 'trainer' &&
+        u.active !== false &&
+        u.employmentStatus !== 'fired' &&
+        u.ownerApproved !== false
+    );
+    if (!targetTrainer) {
+      return res.status(400).json({ error: 'Выберите активного тренера для передачи' });
+    }
+
+    const resolvedStudioId = body.toStudioId || targetTrainer.studioId || client.studioId;
+    const targetStudio = db.studios.find((s) => s.id === resolvedStudioId);
+    if (!targetStudio) {
+      return res.status(400).json({ error: 'Выбранная студия не найдена' });
+    }
+
+    const prevTrainerId = client.assignedTrainerId || (currentUser.role === 'trainer' ? currentUser.id : undefined);
+    const prevTrainerName =
+      client.assignedTrainerName ||
+      (prevTrainerId ? db.users.find((u) => u.id === prevTrainerId)?.name : undefined);
+    const prevStudioId = client.studioId;
+    const nowDate = new Date().toISOString().slice(0, 10);
+    const cleanNote = typeof body.note === 'string' ? body.note.trim().slice(0, 600) : '';
+
+    const revokedSet = new Set(Array.isArray(client.revokedTrainerIds) ? client.revokedTrainerIds : []);
+    const guestSet = new Set(Array.isArray(client.guestTrainerIds) ? client.guestTrainerIds : []);
+    revokedSet.delete(targetTrainer.id);
+
+    const updatedBookings: Booking[] = [];
+
+    if (mode === 'permanent') {
+      client.assignedTrainerId = targetTrainer.id;
+      client.assignedTrainerName = targetTrainer.name;
+      guestSet.delete(targetTrainer.id);
+
+      const shouldChangeStudio = body.changeClientStudio !== false;
+      if (shouldChangeStudio) {
+        client.studioId = targetStudio.id;
+        const linkedUser = client.userId ? db.users.find((u) => u.id === client.userId) : undefined;
+        if (linkedUser) {
+          linkedUser.studioId = targetStudio.id;
+          broadcast('user:updated', stripPassword(linkedUser));
+        }
+      }
+
+      if (body.revokePreviousAccess && prevTrainerId && prevTrainerId !== targetTrainer.id) {
+        revokedSet.add(prevTrainerId);
+        guestSet.delete(prevTrainerId);
+      }
+
+      if (body.transferUpcomingBookings) {
+        db.bookings.forEach((bk) => {
+          if (
+            bk.clientId === client.id &&
+            (bk.status === 'pending' || bk.status === 'confirmed') &&
+            bk.date >= nowDate &&
+            (!prevTrainerId || bk.trainerId === prevTrainerId || bk.trainerId === currentUser.id)
+          ) {
+            bk.trainerId = targetTrainer.id;
+            bk.trainerName = targetTrainer.name;
+            if (shouldChangeStudio) {
+              bk.studioId = targetStudio.id;
+            }
+            updatedBookings.push(bk);
+          }
+        });
+      }
+    } else {
+      if (client.assignedTrainerId !== targetTrainer.id) {
+        guestSet.add(targetTrainer.id);
+      }
+    }
+
+    client.revokedTrainerIds = revokedSet.size > 0 ? Array.from(revokedSet) : undefined;
+    client.guestTrainerIds = guestSet.size > 0 ? Array.from(guestSet) : undefined;
+
+    const handoverRecord: ClientHandoverRecord = {
+      id: uid('hnd'),
+      date: new Date().toISOString().slice(0, 16).replace('T', ' '),
+      mode,
+      fromTrainerId: prevTrainerId,
+      fromTrainerName: prevTrainerName,
+      toTrainerId: targetTrainer.id,
+      toTrainerName: targetTrainer.name,
+      fromStudioId: prevStudioId,
+      toStudioId: targetStudio.id,
+      byUserId: currentUser.id,
+      byUserName: currentUser.name,
+      note: cleanNote || undefined,
+      revokedPreviousAccess: mode === 'permanent' ? Boolean(body.revokePreviousAccess) : false,
+      transferredBookingsCount: updatedBookings.length,
+    };
+
+    const history = Array.isArray(client.handoverHistory) ? client.handoverHistory : [];
+    client.handoverHistory = [handoverRecord, ...history].slice(0, 50);
+
+    const modeLabel =
+      mode === 'permanent'
+        ? `Передача клиента тренеру ${targetTrainer.name} (${targetStudio.name})`
+        : `Гостевое занятие с тренером ${targetTrainer.name} (${targetStudio.name})`;
+    client.notes.unshift({
+      id: uid('cn'),
+      date: nowDate,
+      authorName: currentUser.name,
+      text: cleanNote ? `${modeLabel}. Комментарий: ${cleanNote}` : modeLabel,
+    });
+
+    saveDb(db);
+    updatedBookings.forEach((bk) => broadcast('booking:updated', bk));
+    broadcast('client:transferred', {
+      clientId: client.id,
+      mode,
+      assignedTrainerId: client.assignedTrainerId,
+      assignedTrainerName: client.assignedTrainerName,
+      studioId: client.studioId,
+      toTrainerId: targetTrainer.id,
+      toStudioId: targetStudio.id,
+    });
+
+    res.json({
+      client: currentUser.role === 'trainer' ? redactClientForTrainer(client) : client,
+      updatedBookings,
+      handoverRecord,
+    });
   });
 
   app.post('/api/clients/:id/anthropometry', requireAuth(['owner', 'admin', 'trainer']), (req, res) => {
@@ -2842,6 +3138,152 @@ async function startServer() {
     res.json(dev);
   });
 
+  app.get('/api/hardware/native-bluetooth/devices', requireAuth(['owner', 'admin', 'trainer']), async (_req, res) => {
+    const summary = await listNativeBluetoothDevices();
+    res.json({
+      ...summary,
+      activeConnections: getActiveNativeBluetoothSummary(),
+    });
+  });
+
+  app.post('/api/hardware/native-bluetooth/connect', requireAuth(['owner', 'admin', 'trainer']), async (req, res) => {
+    const body = (req.body || {}) as {
+      type?: EquipmentType;
+      deviceId?: string;
+      deviceName?: string;
+      address?: string;
+      port?: string;
+      protocol?: NativeBluetoothProtocol;
+      baudRate?: number;
+    };
+    const validTypes: EquipmentType[] = ['esp32_limbs', 'myoblue_emg', 'wahoo_tickr', 'xiaomi_scale', 'bp_b05'];
+    if (!body.type || !validTypes.includes(body.type)) {
+      return res.status(400).json({ error: 'Укажите корректный тип датчика (type).' });
+    }
+    const db = getDb();
+    const dev = db.equipment.find((d) => d.type === body.type);
+    if (!dev) {
+      return res.status(404).json({ error: 'Датчик не найден в конфигурации студии.' });
+    }
+
+    const result = await connectNativeBluetoothDevice({
+      type: body.type,
+      deviceId: String(body.deviceId || body.port || body.address || '').slice(0, 180),
+      deviceName: body.deviceName ? String(body.deviceName).slice(0, 90) : undefined,
+      address: body.address ? String(body.address).slice(0, 180) : undefined,
+      port: body.port ? String(body.port).slice(0, 120) : undefined,
+      protocol: body.protocol || 'auto',
+      baudRate: body.baudRate,
+      callbacks: {
+        onPacket: (packet) => {
+          const curDb = getDb();
+          const curDev = curDb.equipment.find((d) => d.type === packet.type);
+          if (!curDev) return;
+          curDev.connected = true;
+          curDev.streaming = true;
+          curDev.connectionMode = 'native_bluetooth';
+          curDev.lastError = '';
+          curDev.lastSyncAt = packet.timestamp;
+          if (typeof packet.batteryPct === 'number') curDev.batteryPct = packet.batteryPct;
+          curDev.signalQualityPct = 96;
+          if (curDev.type === 'esp32_limbs') {
+            curDev.lastReadingText = `ЛР ${(packet.lh ?? 0).toFixed(1)} · ПР ${(packet.rh ?? 0).toFixed(1)} · ЛН ${(packet.lf ?? 0).toFixed(1)} · ПН ${(packet.rf ?? 0).toFixed(1)} кг`;
+          } else if (curDev.type === 'myoblue_emg') {
+            curDev.lastReadingText = `CH1: ${(packet.emgCh1Mv ?? 0).toFixed(2)} мВ · CH2: ${(packet.emgCh2Mv ?? 0).toFixed(2)} мВ`;
+          } else if (curDev.type === 'wahoo_tickr' && packet.heartRateBpm !== undefined) {
+            curDev.lastReadingText =
+              packet.heartRateBpm > 0
+                ? `${Math.round(packet.heartRateBpm)} уд/мин`
+                : 'Подключён — определение оптического пульса...';
+          } else if (curDev.type === 'xiaomi_scale' && packet.weightKg) {
+            curDev.lastReadingText = `${packet.weightKg.toFixed(1)} кг${packet.impedanceOhm ? ` · BIA ${packet.impedanceOhm} Ω` : ''}`;
+          } else if (curDev.type === 'bp_b05' && packet.sys && packet.dia) {
+            curDev.lastReadingText = `${packet.sys}/${packet.dia} мм рт. ст.${packet.pulse ? ` · ${packet.pulse} уд/мин` : ''}`;
+          }
+          saveDb(curDb);
+          broadcast('hardware:telemetry', packet);
+          broadcast('equipment:updated', curDev);
+        },
+        onStatus: (statusMsg) => {
+          const curDb = getDb();
+          const curDev = curDb.equipment.find((d) => d.type === body.type);
+          if (!curDev) return;
+          curDev.connected = true;
+          curDev.streaming = true;
+          curDev.connectionMode = 'native_bluetooth';
+          curDev.lastReadingText = statusMsg;
+          saveDb(curDb);
+          broadcast('equipment:updated', curDev);
+        },
+        onDisconnect: (reason) => {
+          const curDb = getDb();
+          const curDev = curDb.equipment.find((d) => d.type === body.type);
+          if (!curDev) return;
+          curDev.connected = false;
+          curDev.streaming = false;
+          curDev.connectionMode = 'disconnected';
+          curDev.lastError = reason || 'Штатный Bluetooth отключён.';
+          saveDb(curDb);
+          broadcast('equipment:updated', curDev);
+        },
+      },
+    });
+
+    if (result.success) {
+      dev.connected = true;
+      dev.streaming = true;
+      dev.connectionMode = 'native_bluetooth';
+      dev.lastError = '';
+      dev.lastReadingText = result.message;
+      dev.lastSyncAt = new Date().toISOString();
+      dev.hardwareConfig = {
+        ...(dev.hardwareConfig || { transport: 'native_bluetooth' }),
+        transport: 'native_bluetooth',
+        nativeAddress: String(body.port || body.address || body.deviceId || ''),
+        nativeProtocol: result.protocol,
+        lastDeviceName: result.deviceName,
+      };
+      saveDb(db);
+      broadcast('equipment:updated', dev);
+      return res.json({ ...result, device: dev });
+    }
+
+    dev.connected = false;
+    dev.streaming = false;
+    dev.connectionMode = 'disconnected';
+    dev.lastError = result.message;
+    saveDb(db);
+    broadcast('equipment:updated', dev);
+    return res.status(400).json({ ...result, device: dev });
+  });
+
+  app.post('/api/hardware/native-bluetooth/disconnect', requireAuth(['owner', 'admin', 'trainer']), async (req, res) => {
+    const body = (req.body || {}) as { type?: EquipmentType };
+    if (!body.type) return res.status(400).json({ error: 'Укажите type датчика.' });
+    await disconnectNativeBluetoothDevice(body.type);
+    const db = getDb();
+    const dev = db.equipment.find((d) => d.type === body.type);
+    if (dev) {
+      dev.connected = false;
+      dev.streaming = false;
+      dev.connectionMode = 'disconnected';
+      dev.lastReadingText = 'Отключено оператором';
+      dev.lastError = '';
+      saveDb(db);
+      broadcast('equipment:updated', dev);
+    }
+    res.json({ ok: true, device: dev });
+  });
+
+  app.post('/api/hardware/native-bluetooth/write', requireAuth(['owner', 'admin', 'trainer']), async (req, res) => {
+    const body = (req.body || {}) as { type?: EquipmentType; command?: string };
+    if (!body.type || typeof body.command !== 'string') {
+      return res.status(400).json({ error: 'Укажите type и command.' });
+    }
+    const ok = await writeNativeBluetoothCommand(body.type, body.command);
+    res.json({ ok });
+  });
+
   app.post('/api/hardware/telemetry', (req, res) => {
     const authHeader = req.headers.authorization;
     const token = authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -2862,9 +3304,17 @@ async function startServer() {
       return res.status(404).json({ error: 'Датчик с указанным type/deviceId не найден' });
     }
 
+    const sourceMode =
+      body.source === 'native_bluetooth' ||
+      body.source === 'websocket_bridge' ||
+      body.source === 'web_serial' ||
+      body.source === 'web_bluetooth'
+        ? body.source
+        : 'http_bridge';
+
     const packet: LiveHardwarePacket = {
       type: dev.type,
-      source: 'http_bridge',
+      source: sourceMode,
       timestamp: new Date().toISOString(),
       deviceName: body.deviceName || dev.name,
       batteryPct: typeof body.batteryPct === 'number' ? body.batteryPct : undefined,
@@ -2886,7 +3336,7 @@ async function startServer() {
 
     dev.connected = true;
     dev.streaming = true;
-    dev.connectionMode = 'websocket_bridge';
+    dev.connectionMode = sourceMode === 'native_bluetooth' ? 'native_bluetooth' : 'websocket_bridge';
     dev.lastError = '';
     dev.lastSyncAt = packet.timestamp;
     if (typeof packet.batteryPct === 'number') dev.batteryPct = packet.batteryPct;
@@ -2914,32 +3364,146 @@ async function startServer() {
   app.post('/api/sessions', requireAuth(['owner', 'admin', 'trainer']), (req, res) => {
     const currentUser = (req as express.Request & { currentUser: UserAccount }).currentUser;
     const db = getDb();
-    const body = req.body as Partial<TrainingSessionRecord> & { subscriptionId?: string };
+    const body = req.body as Partial<TrainingSessionRecord> & {
+      subscriptionId?: string;
+      assignTrainerAndStudio?: boolean;
+    };
     const client = db.clients.find((c) => c.id === body.clientId);
     if (!client) return res.status(404).json({ error: 'Клиент не найден' });
+
+    if (currentUser.role === 'trainer') {
+      const allowed = getTrainerAssignedClientIds(db, currentUser.id, currentUser.name);
+      if (!allowed.has(client.id)) {
+        return res.status(403).json({ error: 'Нет доступа к проведению сессии с этим клиентом' });
+      }
+    }
+
+    const requestedStudioId = typeof body.studioId === 'string' && body.studioId ? body.studioId : client.studioId;
+    const sessionStudio = db.studios.find((s) => s.id === requestedStudioId);
+    if (!sessionStudio) {
+      return res.status(400).json({ error: 'Выбранная студия не найдена' });
+    }
+
+    let resolvedTrainer: UserAccount = currentUser;
+    if (currentUser.role !== 'trainer' && typeof body.trainerId === 'string' && body.trainerId) {
+      const picked = db.users.find(
+        (u) =>
+          u.id === body.trainerId &&
+          u.active !== false &&
+          u.employmentStatus !== 'fired' &&
+          (u.role === 'trainer' || u.id === currentUser.id)
+      );
+      if (!picked) {
+        return res.status(400).json({ error: 'Выбранный тренер не найден или неактивен' });
+      }
+      resolvedTrainer = picked;
+    }
+
+    const isGuestStudioSession =
+      sessionStudio.id !== client.studioId ||
+      (Boolean(client.assignedTrainerId) && client.assignedTrainerId !== resolvedTrainer.id);
+
+    const sanitizeLimbs = (raw?: Partial<{ lh: number; rh: number; lf: number; rf: number }>) => ({
+      lh: Number(raw?.lh) || 0,
+      rh: Number(raw?.rh) || 0,
+      lf: Number(raw?.lf) || 0,
+      rf: Number(raw?.rf) || 0,
+    });
+
+    const sanitizedExercises = Array.isArray(body.completedExercises)
+      ? body.completedExercises.map((ex) => ({
+          exerciseId: String(ex.exerciseId || uid('ex')),
+          title: String(ex.title || 'Упражнение').slice(0, 180),
+          durationSec: Math.max(0, Number(ex.durationSec) || 0),
+          minWinchKg: typeof ex.minWinchKg === 'number' ? Number(ex.minWinchKg.toFixed(1)) : undefined,
+          maxWinchKg: Number(ex.maxWinchKg) || 0,
+          minLimbLoads: ex.minLimbLoads ? sanitizeLimbs(ex.minLimbLoads) : undefined,
+          maxLimbLoads: ex.maxLimbLoads ? sanitizeLimbs(ex.maxLimbLoads) : undefined,
+          minEmgMv: typeof ex.minEmgMv === 'number' ? Number(ex.minEmgMv.toFixed(2)) : undefined,
+          avgEmgMv: Number(ex.avgEmgMv) || 0,
+          maxEmgMv: typeof ex.maxEmgMv === 'number' ? Number(ex.maxEmgMv.toFixed(2)) : undefined,
+          minEmgCh2Mv: typeof ex.minEmgCh2Mv === 'number' ? Number(ex.minEmgCh2Mv.toFixed(2)) : undefined,
+          avgEmgCh2Mv: typeof ex.avgEmgCh2Mv === 'number' ? Number(ex.avgEmgCh2Mv.toFixed(2)) : undefined,
+          maxEmgCh2Mv: typeof ex.maxEmgCh2Mv === 'number' ? Number(ex.maxEmgCh2Mv.toFixed(2)) : undefined,
+          clientRating:
+            typeof ex.clientRating === 'number'
+              ? Math.max(1, Math.min(5, Math.round(ex.clientRating)))
+              : undefined,
+          discomfortLevel:
+            typeof ex.discomfortLevel === 'number'
+              ? Math.max(0, Math.min(10, Math.round(ex.discomfortLevel)))
+              : undefined,
+          clientFeeling:
+            typeof ex.clientFeeling === 'string' ? ex.clientFeeling.trim().slice(0, 400) : undefined,
+          trainerNote:
+            typeof ex.trainerNote === 'string' ? ex.trainerNote.trim().slice(0, 600) : undefined,
+        }))
+      : [];
+
+    const rawSeries = Array.isArray(body.telemetrySeries) ? body.telemetrySeries.slice(0, 600) : undefined;
+    const sanitizedSeries = rawSeries
+      ? rawSeries.map((pt, idx) => ({
+          t: typeof pt.t === 'number' ? pt.t : idx,
+          leftHandKg: Number(pt.leftHandKg) || 0,
+          rightHandKg: Number(pt.rightHandKg) || 0,
+          leftFootKg: Number(pt.leftFootKg) || 0,
+          rightFootKg: Number(pt.rightFootKg) || 0,
+          totalWinchKg: Number(pt.totalWinchKg) || 0,
+          heartRateBpm: Number(pt.heartRateBpm) || 0,
+          emgCh1Mv: Number(pt.emgCh1Mv) || 0,
+          emgCh2Mv: Number(pt.emgCh2Mv) || 0,
+        }))
+      : undefined;
 
     const sessionRecord: TrainingSessionRecord = {
       id: uid('ses'),
       bookingId: body.bookingId,
-      studioId: body.studioId || client.studioId,
+      studioId: sessionStudio.id,
+      studioName: sessionStudio.name,
+      isGuestStudioSession,
       clientId: client.id,
       clientName: client.name,
-      trainerId: body.trainerId || currentUser.id,
-      trainerName: body.trainerName || currentUser.name,
+      trainerId: resolvedTrainer.id,
+      trainerName: resolvedTrainer.name,
       programId: body.programId,
       programTitle: body.programTitle || 'Индивидуальная тренировка',
       startedAt: body.startedAt || new Date().toISOString(),
       endedAt: new Date().toISOString(),
       durationSec: typeof body.durationSec === 'number' ? body.durationSec : 1800,
-      completedExercises: body.completedExercises || [],
+      completedExercises: sanitizedExercises,
+      minWinchKg: typeof body.minWinchKg === 'number' ? Number(body.minWinchKg.toFixed(1)) : undefined,
       peakWinchKg: typeof body.peakWinchKg === 'number' ? body.peakWinchKg : 0,
       avgSymmetryPct: typeof body.avgSymmetryPct === 'number' ? body.avgSymmetryPct : 0,
-      maxLimbLoads: body.maxLimbLoads || { lh: 0, rh: 0, lf: 0, rf: 0 },
-      avgHrBpm: typeof body.avgHrBpm === 'number' ? body.avgHrBpm : 0,
-      bpBefore: body.bpBefore || '',
-      bpAfter: body.bpAfter || '',
+      minLimbLoads: body.minLimbLoads ? sanitizeLimbs(body.minLimbLoads) : undefined,
+      maxLimbLoads: sanitizeLimbs(body.maxLimbLoads),
+      emgStats: body.emgStats
+        ? {
+            ch1MinMv: Number(body.emgStats.ch1MinMv) || 0,
+            ch1AvgMv: Number(body.emgStats.ch1AvgMv) || 0,
+            ch1MaxMv: Number(body.emgStats.ch1MaxMv) || 0,
+            ch2MinMv: Number(body.emgStats.ch2MinMv) || 0,
+            ch2AvgMv: Number(body.emgStats.ch2AvgMv) || 0,
+            ch2MaxMv: Number(body.emgStats.ch2MaxMv) || 0,
+          }
+        : undefined,
+      minHrBpm: typeof body.minHrBpm === 'number' ? Math.round(body.minHrBpm) : undefined,
+      avgHrBpm: typeof body.avgHrBpm === 'number' ? Math.round(body.avgHrBpm) : 0,
+      maxHrBpm: typeof body.maxHrBpm === 'number' ? Math.round(body.maxHrBpm) : undefined,
+      bpBefore: typeof body.bpBefore === 'string' ? body.bpBefore.trim().slice(0, 20) : '',
+      bpAfter: typeof body.bpAfter === 'string' ? body.bpAfter.trim().slice(0, 20) : '',
       heightBeforeCm: body.heightBeforeCm ? Number(body.heightBeforeCm) : undefined,
       heightAfterCm: body.heightAfterCm ? Number(body.heightAfterCm) : undefined,
+      weightBeforeKg: body.weightBeforeKg ? Number(body.weightBeforeKg) : undefined,
+      weightAfterKg: body.weightAfterKg ? Number(body.weightAfterKg) : undefined,
+      postureBeforeSummary:
+        typeof body.postureBeforeSummary === 'string'
+          ? body.postureBeforeSummary.trim().slice(0, 300)
+          : undefined,
+      postureAfterSummary:
+        typeof body.postureAfterSummary === 'string'
+          ? body.postureAfterSummary.trim().slice(0, 300)
+          : undefined,
+      telemetrySeries: sanitizedSeries,
       notes: body.notes || '',
       paymentMethod: body.paymentMethod || 'paid_card',
       amountPaidRub: typeof body.amountPaidRub === 'number' ? body.amountPaidRub : 0,
@@ -2949,17 +3513,73 @@ async function startServer() {
     client.totalSessions += 1;
     client.lastVisitDate = new Date().toISOString().slice(0, 10);
 
-    // Record pre/post height dynamics into client's anthropometry history if provided
-    if (sessionRecord.heightBeforeCm && sessionRecord.heightBeforeCm > 100) {
+    let assignedBySession = false;
+    if (body.assignTrainerAndStudio && resolvedTrainer.role === 'trainer') {
+      const prevTId = client.assignedTrainerId;
+      const prevTName = client.assignedTrainerName;
+      const prevSId = client.studioId;
+      client.assignedTrainerId = resolvedTrainer.id;
+      client.assignedTrainerName = resolvedTrainer.name;
+      client.studioId = sessionStudio.id;
+      if (Array.isArray(client.revokedTrainerIds)) {
+        client.revokedTrainerIds = client.revokedTrainerIds.filter((id) => id !== resolvedTrainer.id);
+      }
+      if (Array.isArray(client.guestTrainerIds)) {
+        client.guestTrainerIds = client.guestTrainerIds.filter((id) => id !== resolvedTrainer.id);
+      }
+      const linkedUser = client.userId ? db.users.find((u) => u.id === client.userId) : undefined;
+      if (linkedUser) {
+        linkedUser.studioId = sessionStudio.id;
+        broadcast('user:updated', stripPassword(linkedUser));
+      }
+      const handoverEntry: ClientHandoverRecord = {
+        id: uid('hnd'),
+        date: new Date().toISOString().slice(0, 16).replace('T', ' '),
+        mode: 'permanent',
+        fromTrainerId: prevTId,
+        fromTrainerName: prevTName,
+        toTrainerId: resolvedTrainer.id,
+        toTrainerName: resolvedTrainer.name,
+        fromStudioId: prevSId,
+        toStudioId: sessionStudio.id,
+        byUserId: currentUser.id,
+        byUserName: currentUser.name,
+        note: 'Закрепление при проведении сессии в новой студии/у нового тренера',
+      };
+      client.handoverHistory = [handoverEntry, ...(client.handoverHistory || [])].slice(0, 50);
+      assignedBySession = true;
+    } else if (resolvedTrainer.role === 'trainer' && client.assignedTrainerId !== resolvedTrainer.id) {
+      const guestSet = new Set(Array.isArray(client.guestTrainerIds) ? client.guestTrainerIds : []);
+      guestSet.add(resolvedTrainer.id);
+      client.guestTrainerIds = Array.from(guestSet);
+      if (Array.isArray(client.revokedTrainerIds)) {
+        client.revokedTrainerIds = client.revokedTrainerIds.filter((id) => id !== resolvedTrainer.id);
+      }
+    }
+
+    // Record pre/post height or weight dynamics into client's anthropometry history if provided
+    if (
+      (sessionRecord.heightBeforeCm && sessionRecord.heightBeforeCm > 100) ||
+      (sessionRecord.weightBeforeKg && sessionRecord.weightBeforeKg > 20)
+    ) {
       const todayStr = new Date().toISOString().slice(0, 10);
       const latest = client.anthropometry[client.anthropometry.length - 1];
-      const hBefore = Number(sessionRecord.heightBeforeCm.toFixed(1));
-      const hAfter = sessionRecord.heightAfterCm ? Number(sessionRecord.heightAfterCm.toFixed(1)) : undefined;
+      const hBefore =
+        sessionRecord.heightBeforeCm && sessionRecord.heightBeforeCm > 100
+          ? Number(sessionRecord.heightBeforeCm.toFixed(1))
+          : latest?.heightBeforeCm || latest?.heightCm || 175;
+      const hAfter =
+        sessionRecord.heightAfterCm && sessionRecord.heightAfterCm > 100
+          ? Number(sessionRecord.heightAfterCm.toFixed(1))
+          : undefined;
       const hDelta = hAfter !== undefined ? Number((hAfter - hBefore).toFixed(1)) : undefined;
-      const [bpSysStr, bpDiaStr] = (sessionRecord.bpAfter || sessionRecord.bpBefore || '120/80').split('/');
+      const bpSource = (sessionRecord.bpAfter || sessionRecord.bpBefore || '').trim();
+      const bpMatch = bpSource.match(/(\d{2,3})\s*\/\s*(\d{2,3})/);
+      const measuredBpSys = bpMatch ? Number(bpMatch[1]) : undefined;
+      const measuredBpDia = bpMatch ? Number(bpMatch[2]) : undefined;
       const scaleDev = db.equipment.find((d) => d.type === 'xiaomi_scale');
       const ageYears = new Date().getFullYear() - (client.birthYear || 1990);
-      const baseWeight = latest?.weightKg || 75;
+      const baseWeight = sessionRecord.weightAfterKg || sessionRecord.weightBeforeKg || latest?.weightKg || 75;
       const computed = calculateMiScale2Metrics({
         rawWeightKg: baseWeight,
         heightCm: hBefore,
@@ -2975,8 +3595,13 @@ async function startServer() {
         latest.heightDeltaCm = hDelta;
         latest.heightCm = hAfter;
         latest.phase = 'paired';
-        latest.bpSys = Number(bpSysStr) || latest.bpSys;
-        latest.bpDia = Number(bpDiaStr) || latest.bpDia;
+        if (sessionRecord.weightAfterKg || sessionRecord.weightBeforeKg) {
+          latest.weightKg = sessionRecord.weightAfterKg || sessionRecord.weightBeforeKg || latest.weightKg;
+        }
+        if (measuredBpSys && measuredBpDia) {
+          latest.bpSys = measuredBpSys;
+          latest.bpDia = measuredBpDia;
+        }
       } else {
         client.anthropometry.push({
           ...computed,
@@ -2987,8 +3612,8 @@ async function startServer() {
           heightBeforeCm: hBefore,
           heightAfterCm: hAfter,
           heightDeltaCm: hDelta,
-          bpSys: Number(bpSysStr) || latest?.bpSys || 120,
-          bpDia: Number(bpDiaStr) || latest?.bpDia || 80,
+          bpSys: measuredBpSys ?? latest?.bpSys ?? 0,
+          bpDia: measuredBpDia ?? latest?.bpDia ?? 0,
           pulseRest: sessionRecord.avgHrBpm || latest?.pulseRest || 68,
           flexibilityScore: latest?.flexibilityScore || 72,
           painIndex: latest?.painIndex ?? 2,
@@ -2996,7 +3621,7 @@ async function startServer() {
           notes:
             hDelta !== undefined
               ? `Замер роста до/после сессии «${sessionRecord.programTitle}» (${hDelta >= 0 ? '+' : ''}${hDelta.toFixed(1)} см)`
-              : `Входной замер роста перед сессией «${sessionRecord.programTitle}»`,
+              : `Замер параметров на сессии «${sessionRecord.programTitle}»`,
         });
       }
     }
@@ -3013,6 +3638,9 @@ async function startServer() {
     if (sessionRecord.bookingId) {
       const booking = db.bookings.find((b) => b.id === sessionRecord.bookingId);
       if (booking) {
+        booking.studioId = sessionRecord.studioId;
+        booking.trainerId = sessionRecord.trainerId;
+        booking.trainerName = sessionRecord.trainerName;
         booking.status = 'completed';
         booking.paymentStatus = sessionRecord.paymentMethod;
         booking.finalAmountRub = sessionRecord.amountPaidRub;
@@ -3060,6 +3688,17 @@ async function startServer() {
     db.notificationLogs.unshift(log);
 
     saveDb(db);
+    if (assignedBySession) {
+      broadcast('client:transferred', {
+        clientId: client.id,
+        mode: 'permanent',
+        assignedTrainerId: client.assignedTrainerId,
+        assignedTrainerName: client.assignedTrainerName,
+        studioId: client.studioId,
+        toTrainerId: resolvedTrainer.id,
+        toStudioId: sessionStudio.id,
+      });
+    }
     broadcast('session:completed', sessionRecord);
     broadcast('notification:push', log);
     res.json(sessionRecord);
@@ -3531,6 +4170,14 @@ async function startServer() {
     res.json(db.brandAbout || DEFAULT_BRAND_ABOUT);
   });
 
+  app.get('/api/public/legal-agreements', (_req, res) => {
+    const db = getDb();
+    res.json({
+      bundleVersion: db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION,
+      documents: mergeLegalAgreements(db.legalDocuments),
+    });
+  });
+
   // Public Online Booking Link Endpoints (no login required for client booking link /?book=1)
   app.get('/api/public/booking-info', (req, res) => {
     const db = getDb();
@@ -3771,10 +4418,237 @@ async function startServer() {
     }
   };
 
+  const GITHUB_REPO_RE = /^[A-Za-z0-9_.-]{1,60}\/[A-Za-z0-9_.-]{1,100}$/;
+  const GITHUB_BRANCH_RE = /^[A-Za-z0-9._/-]{1,80}$/;
+  const ALLOWED_GITHUB_HOSTS = new Set([
+    'api.github.com',
+    'github.com',
+    'codeload.github.com',
+    'objects.githubusercontent.com',
+    'release-assets.githubusercontent.com',
+  ]);
+
+  const validateGithubRepo = (raw: unknown): string => {
+    const val = String(raw || '').trim();
+    if (!val) return '';
+    // Allow pasting full https://github.com/owner/repo(.git) URL and normalize cleanly
+    const urlMatch = /^https?:\/\/github\.com\/([A-Za-z0-9_.-]{1,60}\/[A-Za-z0-9_.-]{1,100}?)(?:\.git|\/)?$/i.exec(val);
+    const normalized = (urlMatch ? urlMatch[1] : val).replace(/\.git$/i, '');
+    if (!GITHUB_REPO_RE.test(normalized) || normalized.includes('..')) {
+      throw new Error('Укажите GitHub-репозиторий строго в формате owner/repo');
+    }
+    return normalized;
+  };
+
+  const validateGithubBranch = (raw: unknown): string => {
+    const val = String(raw || '').trim() || 'main';
+    if (
+      !GITHUB_BRANCH_RE.test(val) ||
+      val.startsWith('-') ||
+      val.startsWith('/') ||
+      val.endsWith('/') ||
+      val.includes('..') ||
+      val.includes('//')
+    ) {
+      throw new Error('Некорректное имя ветки GitHub');
+    }
+    return val;
+  };
+
+  const detectOriginGithubRepo = async (): Promise<string> => {
+    try {
+      if (!fs.existsSync(path.resolve(process.cwd(), '.git'))) return '';
+      const { stdout } = await execFileAsync('git', ['remote', 'get-url', 'origin']);
+      const raw = stdout.trim();
+      const httpsMatch = /^https?:\/\/github\.com\/([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/i.exec(raw);
+      if (httpsMatch && GITHUB_REPO_RE.test(httpsMatch[1])) return httpsMatch[1];
+      const sshMatch = /^git@github\.com:([A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+?)(?:\.git)?$/i.exec(raw);
+      if (sshMatch && GITHUB_REPO_RE.test(sshMatch[1])) return sshMatch[1];
+    } catch {
+      // ignore missing git remote
+    }
+    return '';
+  };
+
+  const githubHttpsRequest = (
+    rawUrl: string,
+    opts: { accept?: string; timeoutMs?: number; hops?: number } = {}
+  ): Promise<{ statusCode: number; body: Buffer }> =>
+    new Promise((resolve, reject) => {
+      const hops = opts.hops || 0;
+      if (hops > 5) return reject(new Error('Превышен лимит перенаправлений GitHub'));
+      let parsed: URL;
+      try {
+        parsed = new URL(rawUrl);
+      } catch {
+        return reject(new Error('Некорректный URL GitHub'));
+      }
+      if (parsed.protocol !== 'https:' || !ALLOWED_GITHUB_HOSTS.has(parsed.hostname)) {
+        return reject(new Error('Запрос разрешён только к официальным доменам GitHub HTTPS'));
+      }
+      const headers: Record<string, string> = {
+        'User-Agent': `EtalonPraviloStudio/${readPkgVersion()}`,
+      };
+      if (opts.accept) headers.Accept = opts.accept;
+      const ghToken = (process.env.GITHUB_TOKEN || '').trim();
+      if (
+        ghToken &&
+        (parsed.hostname === 'api.github.com' ||
+          parsed.hostname === 'codeload.github.com' ||
+          parsed.hostname === 'github.com')
+      ) {
+        headers.Authorization = `Bearer ${ghToken}`;
+      }
+
+      const req = https.get(
+        parsed.toString(),
+        { headers, timeout: opts.timeoutMs || 12000 },
+        (res) => {
+          if (res.statusCode && res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+            res.resume();
+            return githubHttpsRequest(res.headers.location, { ...opts, hops: hops + 1 }).then(
+              resolve,
+              reject
+            );
+          }
+          const chunks: Buffer[] = [];
+          let totalBytes = 0;
+          const MAX_BYTES = 120 * 1024 * 1024; // 120MB safety cap
+          res.on('data', (chunk: Buffer) => {
+            totalBytes += chunk.length;
+            if (totalBytes > MAX_BYTES) {
+              req.destroy(new Error('Превышен допустимый размер архива обновления'));
+              return;
+            }
+            chunks.push(chunk);
+          });
+          res.on('end', () => {
+            resolve({
+              statusCode: res.statusCode || 0,
+              body: Buffer.concat(chunks),
+            });
+          });
+        }
+      );
+      req.on('error', reject);
+      req.on('timeout', () => req.destroy(new Error('Таймаут соединения с GitHub')));
+    });
+
+  const fetchGithubJson = async <T>(apiPath: string): Promise<{ ok: boolean; status: number; data: T | null }> => {
+    const cleanPath = apiPath.startsWith('/') ? apiPath : `/${apiPath}`;
+    const res = await githubHttpsRequest(`https://api.github.com${cleanPath}`, {
+      accept: 'application/vnd.github+json',
+      timeoutMs: 10000,
+    });
+    if (res.statusCode < 200 || res.statusCode >= 300) {
+      return { ok: false, status: res.statusCode, data: null };
+    }
+    try {
+      return { ok: true, status: res.statusCode, data: JSON.parse(res.body.toString('utf-8')) as T };
+    } catch {
+      return { ok: false, status: res.statusCode, data: null };
+    }
+  };
+
+  const listLocalDesktopInstallers = () => {
+    const releaseDir = path.resolve(process.cwd(), 'release-desktop');
+    if (!fs.existsSync(releaseDir)) return [];
+    const results: Array<{
+      fileName: string;
+      platform: 'mac-arm64' | 'win-x64';
+      ext: 'dmg' | 'exe';
+      sizeBytes: number;
+      downloadUrl: string;
+    }> = [];
+    try {
+      for (const entry of fs.readdirSync(releaseDir)) {
+        const full = path.resolve(releaseDir, entry);
+        if (!full.startsWith(releaseDir + path.sep)) continue;
+        const stat = fs.statSync(full);
+        if (!stat.isFile()) continue;
+        if (/\.dmg$/i.test(entry)) {
+          results.push({
+            fileName: entry,
+            platform: 'mac-arm64',
+            ext: 'dmg',
+            sizeBytes: stat.size,
+            downloadUrl: `/api/system/download-installer/${encodeURIComponent(entry)}`,
+          });
+        } else if (/\.exe$/i.test(entry)) {
+          results.push({
+            fileName: entry,
+            platform: 'win-x64',
+            ext: 'exe',
+            sizeBytes: stat.size,
+            downloadUrl: `/api/system/download-installer/${encodeURIComponent(entry)}`,
+          });
+        }
+      }
+    } catch {
+      // ignore unreadable release-desktop
+    }
+    return results;
+  };
+
+  const createAutomaticDbBackup = (db: StudioDatabase): string => {
+    saveDb(db);
+    const dataDir = process.env.STUDIO_DATA_DIR
+      ? path.resolve(process.env.STUDIO_DATA_DIR)
+      : path.resolve(process.cwd(), 'data');
+    const backupsDir = path.resolve(dataDir, 'backups');
+    fs.mkdirSync(backupsDir, { recursive: true });
+    const stamp = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const backupName = `studio-db-before-update-${stamp}.json`;
+    const backupPath = path.resolve(backupsDir, backupName);
+    if (!backupPath.startsWith(backupsDir + path.sep)) {
+      throw new Error('Некорректный путь резервной копии');
+    }
+    fs.writeFileSync(backupPath, JSON.stringify(db, null, 2), 'utf-8');
+    return backupName;
+  };
+
+  const copyUpdateTreeSafely = (srcRoot: string, destRoot: string) => {
+    const resolvedSrcRoot = path.resolve(srcRoot);
+    const resolvedDestRoot = path.resolve(destRoot);
+    const SKIP_TOP_LEVEL = new Set([
+      '.git',
+      '.env',
+      '.env.local',
+      'data',
+      'node_modules',
+      'release-desktop',
+      'dist',
+    ]);
+    const walk = (rel: string) => {
+      const srcCurrent = rel ? path.resolve(resolvedSrcRoot, rel) : resolvedSrcRoot;
+      if (srcCurrent !== resolvedSrcRoot && !srcCurrent.startsWith(resolvedSrcRoot + path.sep)) {
+        return;
+      }
+      for (const entry of fs.readdirSync(srcCurrent, { withFileTypes: true })) {
+        const entryRel = rel ? path.join(rel, entry.name) : entry.name;
+        const topSeg = entryRel.split(path.sep)[0];
+        if (SKIP_TOP_LEVEL.has(topSeg) || entry.name === '.DS_Store') continue;
+        const srcPath = path.resolve(resolvedSrcRoot, entryRel);
+        const destPath = path.resolve(resolvedDestRoot, entryRel);
+        if (!srcPath.startsWith(resolvedSrcRoot + path.sep)) continue;
+        if (!destPath.startsWith(resolvedDestRoot + path.sep)) continue;
+        if (entry.isSymbolicLink()) continue;
+        if (entry.isDirectory()) {
+          fs.mkdirSync(destPath, { recursive: true });
+          walk(entryRel);
+        } else if (entry.isFile()) {
+          fs.mkdirSync(path.dirname(destPath), { recursive: true });
+          fs.copyFileSync(srcPath, destPath);
+        }
+      }
+    };
+    walk('');
+  };
+
   app.get('/api/system/info', requireAuth(['owner']), async (_req, res) => {
     const db = getDb();
     const hasGit = fs.existsSync(path.resolve(process.cwd(), '.git'));
-    let commitHash = 'release-bundle';
+    let commitHash = db.systemSettings?.lastUpdatedCommit || 'release-bundle';
     if (hasGit) {
       try {
         const { stdout } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD']);
@@ -3783,6 +4657,17 @@ async function startServer() {
         // ignore git error
       }
     }
+    const detectedRepo = db.systemSettings?.githubRepo || (await detectOriginGithubRepo());
+    const systemSettings: SystemSecuritySettings = {
+      requireEmailVerificationOnLogin: false,
+      domainUrl: '',
+      tunnelMode: 'cloudflare',
+      autoCheckUpdates: true,
+      releaseChannel: 'stable',
+      githubBranch: 'main',
+      ...db.systemSettings,
+      githubRepo: detectedRepo,
+    };
     res.json({
       appName: 'ЭТАЛОН ПРАВИЛО',
       version: readPkgVersion(),
@@ -3790,26 +4675,38 @@ async function startServer() {
       hasGit,
       nodeVersion: process.version,
       platform: process.platform,
+      arch: process.arch,
       uptimeSec: Math.round(process.uptime()),
       port: PORT,
-      systemSettings: db.systemSettings || {
-        requireEmailVerificationOnLogin: false,
-        domainUrl: '',
-        tunnelMode: 'cloudflare',
-        autoCheckUpdates: true,
-        releaseChannel: 'stable',
-      },
+      localInstallers: listLocalDesktopInstallers(),
+      systemSettings,
     });
+  });
+
+  app.get('/api/system/download-installer/:fileName', requireAuth(['owner']), (req, res) => {
+    const baseName = path.basename(String(req.params.fileName || ''));
+    if (!baseName || !/\.(dmg|exe|zip)$/i.test(baseName)) {
+      return res.status(400).json({ error: 'Недопустимый файл установщика' });
+    }
+    const releaseDir = path.resolve(process.cwd(), 'release-desktop');
+    const targetPath = path.resolve(releaseDir, baseName);
+    if (!targetPath.startsWith(releaseDir + path.sep) || !fs.existsSync(targetPath)) {
+      return res.status(404).json({ error: 'Файл установщика не найден на сервере' });
+    }
+    res.download(targetPath, baseName);
   });
 
   app.patch('/api/system/settings', requireAuth(['owner']), (req, res) => {
     const db = getDb();
-    const current: SystemSecuritySettings = db.systemSettings || {
+    const current: SystemSecuritySettings = {
       requireEmailVerificationOnLogin: false,
       domainUrl: '',
       tunnelMode: 'cloudflare',
       autoCheckUpdates: true,
       releaseChannel: 'stable',
+      githubRepo: '',
+      githubBranch: 'main',
+      ...db.systemSettings,
     };
     const body = req.body as Partial<SystemSecuritySettings>;
     if (typeof body.requireEmailVerificationOnLogin === 'boolean') {
@@ -3818,7 +4715,12 @@ async function startServer() {
     if (typeof body.domainUrl === 'string') {
       current.domainUrl = body.domainUrl.trim();
     }
-    if (body.tunnelMode === 'cloudflare' || body.tunnelMode === 'nginx' || body.tunnelMode === 'caddy' || body.tunnelMode === 'local') {
+    if (
+      body.tunnelMode === 'cloudflare' ||
+      body.tunnelMode === 'nginx' ||
+      body.tunnelMode === 'caddy' ||
+      body.tunnelMode === 'local'
+    ) {
       current.tunnelMode = body.tunnelMode;
     }
     if (typeof body.autoCheckUpdates === 'boolean') {
@@ -3826,6 +4728,18 @@ async function startServer() {
     }
     if (body.releaseChannel === 'stable' || body.releaseChannel === 'beta') {
       current.releaseChannel = body.releaseChannel;
+    }
+    try {
+      if (typeof body.githubRepo === 'string') {
+        current.githubRepo = validateGithubRepo(body.githubRepo);
+      }
+      if (typeof body.githubBranch === 'string') {
+        current.githubBranch = validateGithubBranch(body.githubBranch);
+      }
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Некорректные параметры GitHub',
+      });
     }
     db.systemSettings = current;
     saveDb(db);
@@ -3844,91 +4758,394 @@ async function startServer() {
     res.send(JSON.stringify(db, null, 2));
   });
 
-  app.post('/api/system/check-updates', requireAuth(['owner']), async (_req, res) => {
+  app.post('/api/system/check-updates', requireAuth(['owner']), async (req, res) => {
     const db = getDb();
     const version = readPkgVersion();
     const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    if (db.systemSettings) {
-      db.systemSettings.lastUpdateCheckAt = nowStr;
-      saveDb(db);
+    const currentSettings: SystemSecuritySettings = {
+      requireEmailVerificationOnLogin: false,
+      domainUrl: '',
+      tunnelMode: 'cloudflare',
+      autoCheckUpdates: true,
+      releaseChannel: 'stable',
+      githubBranch: 'main',
+      ...db.systemSettings,
+    };
+
+    let repo = '';
+    let branch = 'main';
+    try {
+      repo = validateGithubRepo(
+        (req.body as { githubRepo?: string })?.githubRepo ??
+          currentSettings.githubRepo ??
+          (await detectOriginGithubRepo())
+      );
+      branch = validateGithubBranch(
+        (req.body as { githubBranch?: string })?.githubBranch ?? currentSettings.githubBranch ?? 'main'
+      );
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Некорректный репозиторий или ветка GitHub',
+      });
+    }
+
+    currentSettings.githubRepo = repo;
+    currentSettings.githubBranch = branch;
+    currentSettings.lastUpdateCheckAt = nowStr;
+
+    const hasGit = fs.existsSync(path.resolve(process.cwd(), '.git'));
+    let currentCommit = currentSettings.lastUpdatedCommit || (hasGit ? 'local' : 'standalone');
+    let gitCommitsBehind = 0;
+
+    if (hasGit) {
+      try {
+        const { stdout: hashOut } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD']);
+        currentCommit = hashOut.trim() || currentCommit;
+        await execFileAsync('git', ['fetch', '--quiet'], { timeout: 10000 }).catch(() => undefined);
+        try {
+          const { stdout: countOut } = await execFileAsync('git', ['rev-list', '--count', 'HEAD..@{u}']);
+          gitCommitsBehind = Number(countOut.trim()) || 0;
+        } catch {
+          gitCommitsBehind = 0;
+        }
+      } catch {
+        // ignore local git error and continue with GitHub API
+      }
+    }
+
+    let remoteCommit = '';
+    let remoteCommitMsg = '';
+    let remoteCommitDate = '';
+    let githubUpdateAvailable = false;
+    let latestReleaseTag = '';
+    let latestReleaseUrl = '';
+    let latestDmgUrl = '';
+    let latestExeUrl = '';
+    let latestDmgName = '';
+    let latestExeName = '';
+    let githubApiError = '';
+
+    if (repo) {
+      try {
+        const commitResp = await fetchGithubJson<{
+          sha?: string;
+          commit?: { message?: string; author?: { date?: string } };
+        }>(`/repos/${repo}/commits/${encodeURIComponent(branch)}`);
+
+        if (commitResp.ok && commitResp.data?.sha) {
+          remoteCommit = commitResp.data.sha.slice(0, 7);
+          remoteCommitMsg = String(commitResp.data.commit?.message || '').split('\n')[0].slice(0, 140);
+          remoteCommitDate = String(commitResp.data.commit?.author?.date || '').slice(0, 16).replace('T', ' ');
+          if (currentCommit && currentCommit !== 'standalone' && currentCommit !== 'local') {
+            githubUpdateAvailable = remoteCommit.toLowerCase() !== currentCommit.toLowerCase();
+          } else {
+            // Non-git initial bundle: allow syncing directly from GitHub branch
+            githubUpdateAvailable = true;
+          }
+        } else if (commitResp.status === 404) {
+          githubApiError = `Репозиторий ${repo} (ветка ${branch}) не найден на GitHub или является приватным (укажите GITHUB_TOKEN на сервере).`;
+        } else if (commitResp.status > 0) {
+          githubApiError = `GitHub API вернул HTTP ${commitResp.status}.`;
+        }
+
+        const releaseResp = await fetchGithubJson<{
+          tag_name?: string;
+          html_url?: string;
+          assets?: Array<{ name?: string; browser_download_url?: string }>;
+        }>(`/repos/${repo}/releases/latest`);
+
+        if (releaseResp.ok && releaseResp.data) {
+          latestReleaseTag = String(releaseResp.data.tag_name || '').trim();
+          latestReleaseUrl = String(releaseResp.data.html_url || '').trim();
+          const assets = Array.isArray(releaseResp.data.assets) ? releaseResp.data.assets : [];
+          const dmgAsset =
+            assets.find((a) => /\.dmg$/i.test(a.name || '') && /arm64|mac/i.test(a.name || '')) ||
+            assets.find((a) => /\.dmg$/i.test(a.name || ''));
+          const exeAsset =
+            assets.find((a) => /\.exe$/i.test(a.name || '') && !/portable/i.test(a.name || '')) ||
+            assets.find((a) => /\.exe$/i.test(a.name || ''));
+          latestDmgUrl = dmgAsset?.browser_download_url || '';
+          latestDmgName = dmgAsset?.name || '';
+          latestExeUrl = exeAsset?.browser_download_url || '';
+          latestExeName = exeAsset?.name || '';
+        }
+      } catch (err) {
+        githubApiError = err instanceof Error ? err.message : 'Ошибка соединения с GitHub';
+      }
+    }
+
+    currentSettings.latestReleaseTag = latestReleaseTag || currentSettings.latestReleaseTag;
+    currentSettings.latestReleaseUrl = latestReleaseUrl || currentSettings.latestReleaseUrl;
+    currentSettings.latestDmgUrl = latestDmgUrl || currentSettings.latestDmgUrl;
+    currentSettings.latestExeUrl = latestExeUrl || currentSettings.latestExeUrl;
+    db.systemSettings = currentSettings;
+    saveDb(db);
+
+    const updateAvailable = gitCommitsBehind > 0 || githubUpdateAvailable;
+    let message = `Установлена актуальная версия ${version} (${currentCommit}).`;
+    if (githubApiError && !hasGit) {
+      message = githubApiError;
+    } else if (!repo && !hasGit) {
+      message =
+        'Укажите репозиторий GitHub (owner/repo) и сохраните настройки сервера, чтобы проверять и устанавливать обновления прямо с GitHub.';
+    } else if (updateAvailable) {
+      const details = [
+        gitCommitsBehind > 0 ? `новых коммитов: ${gitCommitsBehind}` : '',
+        remoteCommit ? `GitHub ${branch}: ${remoteCommit}` : '',
+        remoteCommitMsg ? `«${remoteCommitMsg}»` : '',
+      ]
+        .filter(Boolean)
+        .join(' · ');
+      message = `Доступно обновление с GitHub (${details}). Перед установкой автоматически сохранится резервная копия базы data/backups/.`;
+    } else if (remoteCommit) {
+      message = `Версия ${version} (${currentCommit}) синхронизирована с GitHub (${repo}@${branch}).`;
+    }
+
+    res.json({
+      currentVersion: version,
+      currentCommit,
+      remoteCommit,
+      remoteCommitMsg,
+      remoteCommitDate,
+      updateAvailable,
+      commitsBehind: gitCommitsBehind,
+      checkedAt: nowStr,
+      hasGit,
+      githubRepo: repo,
+      githubBranch: branch,
+      latestReleaseTag,
+      latestReleaseUrl,
+      latestDmgUrl,
+      latestDmgName,
+      latestExeUrl,
+      latestExeName,
+      localInstallers: listLocalDesktopInstallers(),
+      message,
+    });
+  });
+
+  app.post('/api/system/apply-update', requireAuth(['owner']), async (req, res) => {
+    const db = getDb();
+    let backupFile = '';
+    try {
+      backupFile = createAutomaticDbBackup(db);
+    } catch (err) {
+      return res.status(500).json({
+        error: `Не удалось создать резервную копию базы перед обновлением: ${err instanceof Error ? err.message : 'ошибка ФС'}`,
+      });
+    }
+
+    const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
+    const currentSettings: SystemSecuritySettings = {
+      requireEmailVerificationOnLogin: false,
+      domainUrl: '',
+      tunnelMode: 'cloudflare',
+      autoCheckUpdates: true,
+      releaseChannel: 'stable',
+      githubBranch: 'main',
+      ...db.systemSettings,
+    };
+
+    let repo = '';
+    let branch = 'main';
+    try {
+      repo = validateGithubRepo(
+        (req.body as { githubRepo?: string })?.githubRepo ??
+          currentSettings.githubRepo ??
+          (await detectOriginGithubRepo())
+      );
+      branch = validateGithubBranch(
+        (req.body as { githubBranch?: string })?.githubBranch ?? currentSettings.githubBranch ?? 'main'
+      );
+    } catch (err) {
+      return res.status(400).json({
+        error: err instanceof Error ? err.message : 'Некорректные параметры GitHub',
+      });
     }
 
     const hasGit = fs.existsSync(path.resolve(process.cwd(), '.git'));
-    if (!hasGit) {
-      return res.json({
-        currentVersion: version,
-        currentCommit: 'standalone',
-        updateAvailable: false,
-        commitsBehind: 0,
-        checkedAt: nowStr,
-        hasGit: false,
-        message: 'Установлена автономная серверная сборка. Для 1-клик обновления по Git разместите репозиторий через git clone или загрузите новый архив с заменой без удаления папки data/.',
+    if (hasGit) {
+      try {
+        const pullArgs = repo
+          ? ['pull', '--ff-only', `https://github.com/${repo}.git`, branch]
+          : ['pull', '--ff-only'];
+        const { stdout: pullOut } = await execFileAsync('git', pullArgs, { timeout: 45000 });
+        const { stdout: headOut } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD']).catch(() => ({
+          stdout: '',
+        }));
+        const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+        const { stdout: buildOut } = await execFileAsync(npmCmd, ['run', 'build'], { timeout: 120000 });
+
+        currentSettings.lastUpdatedAt = nowStr;
+        if (headOut.trim()) currentSettings.lastUpdatedCommit = headOut.trim();
+        if (repo) currentSettings.githubRepo = repo;
+        currentSettings.githubBranch = branch;
+        db.systemSettings = currentSettings;
+        saveDb(db);
+
+        return res.json({
+          ok: true,
+          mode: 'git',
+          newCommit: headOut.trim() || undefined,
+          backupFile,
+          updatedAt: nowStr,
+          message: `Код обновлён с GitHub (${branch}) и пересобран. Резервная копия БД: ${backupFile}. Перезапустите сервер (systemctl restart pravilo-studio или перезапуск приложения), чтобы применить изменения.`,
+          log: `${pullOut}\n${buildOut}`.slice(0, 1500),
+        });
+      } catch (err) {
+        return res.status(500).json({
+          error: `Ошибка обновления через Git: ${err instanceof Error ? err.message : 'ошибка команды'}`,
+        });
+      }
+    }
+
+    if (!repo) {
+      return res.status(400).json({
+        error: 'Укажите GitHub-репозиторий (owner/repo) в настройках сервера, чтобы устанавливать обновления напрямую с GitHub.',
       });
     }
 
+    let tmpStageDir = '';
     try {
-      const { stdout: hashOut } = await execFileAsync('git', ['rev-parse', '--short', 'HEAD']);
-      await execFileAsync('git', ['fetch', '--quiet'], { timeout: 10000 }).catch(() => undefined);
-      let commitsBehind = 0;
-      try {
-        const { stdout: countOut } = await execFileAsync('git', ['rev-list', '--count', 'HEAD..@{u}']);
-        commitsBehind = Number(countOut.trim()) || 0;
-      } catch {
-        commitsBehind = 0;
+      const pkgBefore = fs.existsSync(path.resolve(process.cwd(), 'package.json'))
+        ? fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf-8')
+        : '';
+
+      const commitResp = await fetchGithubJson<{ sha?: string }>(
+        `/repos/${repo}/commits/${encodeURIComponent(branch)}`
+      );
+      const latestSha = commitResp.ok && commitResp.data?.sha ? commitResp.data.sha.slice(0, 7) : '';
+
+      const archiveRes = await githubHttpsRequest(
+        `https://codeload.github.com/${repo}/tar.gz/refs/heads/${encodeURIComponent(branch)}`,
+        { timeoutMs: 60000 }
+      );
+      if (archiveRes.statusCode < 200 || archiveRes.statusCode >= 300) {
+        return res.status(502).json({
+          error: `Не удалось скачать архив обновления с GitHub (HTTP ${archiveRes.statusCode}). Проверьте имя репозитория, ветку и доступ.`,
+        });
       }
-      res.json({
-        currentVersion: version,
-        currentCommit: hashOut.trim(),
-        updateAvailable: commitsBehind > 0,
-        commitsBehind,
-        checkedAt: nowStr,
-        hasGit: true,
-        message:
-          commitsBehind > 0
-            ? `Доступно обновлений (коммитов): ${commitsBehind}. Нажмите «Установить обновление», база data/studio-db.json будет сохранена.`
-            : `Установлена актуальная версия ${version} (${hashOut.trim()}).`,
+
+      tmpStageDir = fs.mkdtempSync(path.join(os.tmpdir(), 'pravilo-gh-update-'));
+      const tarPath = path.resolve(tmpStageDir, 'update.tar.gz');
+      const extractDir = path.resolve(tmpStageDir, 'extracted');
+      fs.mkdirSync(extractDir, { recursive: true });
+      fs.writeFileSync(tarPath, archiveRes.body);
+
+      await execFileAsync('tar', ['-xzf', tarPath, '-C', extractDir], { timeout: 45000 });
+      const topDirs = fs
+        .readdirSync(extractDir, { withFileTypes: true })
+        .filter((d) => d.isDirectory())
+        .map((d) => d.name);
+      if (topDirs.length !== 1) {
+        throw new Error('Неожиданная структура архива GitHub');
+      }
+      const unpackedRoot = path.resolve(extractDir, topDirs[0]);
+      copyUpdateTreeSafely(unpackedRoot, process.cwd());
+
+      const npmCmd = process.platform === 'win32' ? 'npm.cmd' : 'npm';
+      const pkgAfter = fs.existsSync(path.resolve(process.cwd(), 'package.json'))
+        ? fs.readFileSync(path.resolve(process.cwd(), 'package.json'), 'utf-8')
+        : '';
+      if (pkgBefore !== pkgAfter) {
+        await execFileAsync(npmCmd, ['install', '--omit=dev'], { timeout: 120000 }).catch(() => undefined);
+      }
+      await execFileAsync(npmCmd, ['run', 'build'], { timeout: 120000 });
+
+      currentSettings.githubRepo = repo;
+      currentSettings.githubBranch = branch;
+      currentSettings.lastUpdatedAt = nowStr;
+      if (latestSha) currentSettings.lastUpdatedCommit = latestSha;
+      db.systemSettings = currentSettings;
+      saveDb(db);
+
+      return res.json({
+        ok: true,
+        mode: 'github_archive',
+        newCommit: latestSha || undefined,
+        backupFile,
+        updatedAt: nowStr,
+        message: `Обновление с GitHub (${repo}@${branch}${latestSha ? ` · ${latestSha}` : ''}) установлено и пересобрано. Резервная копия БД сохранена (${backupFile}). Перезапустите сервер, чтобы активировать обновлённую версию.`,
       });
     } catch (err) {
-      res.json({
-        currentVersion: version,
-        currentCommit: 'local',
-        updateAvailable: false,
-        commitsBehind: 0,
-        checkedAt: nowStr,
-        hasGit: true,
-        message: `Локальная проверка выполнена (${err instanceof Error ? err.message : 'без удалённого репозитория'}).`,
+      return res.status(500).json({
+        error: `Не удалось установить обновление с GitHub: ${err instanceof Error ? err.message : 'ошибка обновления'}`,
       });
+    } finally {
+      if (tmpStageDir) {
+        try {
+          fs.rmSync(tmpStageDir, { recursive: true, force: true });
+        } catch {
+          // ignore cleanup failure
+        }
+      }
     }
   });
 
-  app.post('/api/system/apply-update', requireAuth(['owner']), async (_req, res) => {
+  // Legal Agreements Documents Management (Owner Edit + Reset)
+  app.get('/api/legal/documents', requireAuth(), (_req, res) => {
     const db = getDb();
+    res.json({
+      bundleVersion: db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION,
+      documents: mergeLegalAgreements(db.legalDocuments),
+    });
+  });
+
+  app.put('/api/legal/documents', requireAuth(['owner']), (req, res) => {
+    const { documents, bumpBundleVersion } = (req.body || {}) as {
+      documents?: unknown;
+      bumpBundleVersion?: unknown;
+    };
+    const check = sanitizeLegalDocumentsInput(documents);
+    if (!check.ok) {
+      return res.status(400).json({ error: check.error });
+    }
+    const db = getDb();
+    db.legalDocuments = check.documents;
+    if (bumpBundleVersion === true) {
+      db.legalBundleVersion = incrementLegalBundleVersion(
+        db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION
+      );
+    } else if (!db.legalBundleVersion) {
+      db.legalBundleVersion = CURRENT_LEGAL_BUNDLE_VERSION;
+    }
     saveDb(db);
-    const hasGit = fs.existsSync(path.resolve(process.cwd(), '.git'));
-    const nowStr = new Date().toISOString().slice(0, 16).replace('T', ' ');
-    if (!hasGit) {
-      return res.status(400).json({
-        error: 'В текущем каталоге не инициализирован .git. Для автоматического обновления клонируйте проект с Git или замените файлы приложения (папка data/ остаётся нетронутой).',
-      });
-    }
-    try {
-      const { stdout: pullOut } = await execFileAsync('git', ['pull', '--ff-only'], { timeout: 30000 });
-      const { stdout: buildOut } = await execFileAsync('npm', ['run', 'build'], { timeout: 90000 });
-      if (db.systemSettings) {
-        db.systemSettings.lastUpdatedAt = nowStr;
-        saveDb(db);
+    const merged = mergeLegalAgreements(db.legalDocuments);
+    const bundleVersion = db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION;
+    broadcast('legal-docs:updated', { documents: merged, bundleVersion });
+    res.json({ ok: true, documents: merged, bundleVersion });
+  });
+
+  app.post('/api/legal/documents/reset', requireAuth(['owner']), (req, res) => {
+    const { docId } = (req.body || {}) as { docId?: unknown };
+    const db = getDb();
+    if (typeof docId === 'string' && docId.trim()) {
+      const targetId = docId.trim();
+      const defaultDoc = LEGAL_AGREEMENTS.find((d) => d.id === targetId);
+      if (!defaultDoc) {
+        return res.status(404).json({ error: 'Стандартный шаблон для данного документа не найден.' });
       }
-      res.json({
-        ok: true,
-        updatedAt: nowStr,
-        message: 'Обновление загружено и пересобрано. Перезапустите службу (systemctl restart pravilo-studio), чтобы применить новый код.',
-        log: `${pullOut}\n${buildOut}`.slice(0, 1500),
-      });
-    } catch (err) {
-      res.status(500).json({
-        error: `Не удалось выполнить обновление: ${err instanceof Error ? err.message : 'ошибка команды'}`,
-      });
+      const current = mergeLegalAgreements(db.legalDocuments);
+      db.legalDocuments = current.map((d) =>
+        d.id === targetId
+          ? {
+              ...defaultDoc,
+              requiredFor: [...defaultDoc.requiredFor],
+              sections: defaultDoc.sections.map((s) => ({
+                heading: s.heading,
+                paragraphs: [...s.paragraphs],
+              })),
+            }
+          : d
+      );
+    } else {
+      db.legalDocuments = undefined;
     }
+    saveDb(db);
+    const merged = mergeLegalAgreements(db.legalDocuments);
+    const bundleVersion = db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION;
+    broadcast('legal-docs:updated', { documents: merged, bundleVersion });
+    res.json({ ok: true, documents: merged, bundleVersion });
   });
 
   // Legal Agreements Acceptance & Owner Confirmations
@@ -3958,7 +5175,9 @@ async function startServer() {
       });
     }
 
-    const requiredDocs = getLegalAgreementsForRole(currentUser.role);
+    const db = getDb();
+    const activeBundleVersion = db.legalBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION;
+    const requiredDocs = getLegalAgreementsForRole(currentUser.role, db.legalDocuments);
     const receivedIds = Array.isArray(acceptedIds)
       ? acceptedIds.filter((id): id is string => typeof id === 'string')
       : [];
@@ -3970,7 +5189,6 @@ async function startServer() {
       });
     }
 
-    const db = getDb();
     const user = db.users.find((u) => u.id === currentUser.id);
     if (!user) {
       return res.status(404).json({ error: 'Пользователь не найден' });
@@ -3986,7 +5204,7 @@ async function startServer() {
       : 'Вся сеть';
 
     user.legalAcceptedAt = nowDisplay;
-    user.legalAgreementsVersion = CURRENT_LEGAL_BUNDLE_VERSION;
+    user.legalAgreementsVersion = activeBundleVersion;
 
     const record: LegalAcceptanceRecord = {
       id: uid('legal'),
@@ -3997,7 +5215,7 @@ async function startServer() {
       studioId: user.studioId,
       studioName,
       appFlavor: validFlavor,
-      agreementsVersion: CURRENT_LEGAL_BUNDLE_VERSION,
+      agreementsVersion: activeBundleVersion,
       acceptedItems: requiredDocs.map((doc) => ({
         agreementId: doc.id,
         title: doc.shortTitle,
@@ -4075,7 +5293,7 @@ async function startServer() {
             `Приложение: ${flavorRu}\n` +
             `Студия: ${studioName || 'Сеть'}\n` +
             `Дата и время подтверждения прочтения: ${nowDisplay}\n` +
-            `Пакет соглашений: v${CURRENT_LEGAL_BUNDLE_VERSION}\n\n` +
+            `Пакет соглашений: v${activeBundleVersion}\n\n` +
             `Принятые документы:\n${docsListText}\n`,
         });
         record.ownerEmailDispatched = true;

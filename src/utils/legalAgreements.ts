@@ -1,30 +1,27 @@
-import type { UserAccount, UserRole } from '../types.ts';
+import type {
+  LegalAgreementCategory,
+  LegalAgreementDoc,
+  LegalAgreementSection,
+  UserAccount,
+  UserRole,
+} from '../types.ts';
+
+export type { LegalAgreementCategory, LegalAgreementDoc, LegalAgreementSection };
 
 export const CURRENT_LEGAL_BUNDLE_VERSION = '2026.1';
 
-export interface LegalAgreementSection {
-  heading: string;
-  paragraphs: string[];
-}
+export const LEGAL_AGREEMENT_CATEGORIES: LegalAgreementCategory[] = [
+  'Конфиденциальность',
+  'Персональные данные',
+  'Оферта и правила',
+  'Безопасность и здоровье',
+  'Телеметрия и фото',
+  'Уведомления',
+  'Конфиденциальность сотрудника (NDA)',
+];
 
-export interface LegalAgreementDoc {
-  id: string;
-  title: string;
-  shortTitle: string;
-  category:
-    | 'Конфиденциальность'
-    | 'Персональные данные'
-    | 'Оферта и правила'
-    | 'Безопасность и здоровье'
-    | 'Телеметрия и фото'
-    | 'Уведомления'
-    | 'Конфиденциальность сотрудника (NDA)';
-  version: string;
-  updatedAt: string;
-  requiredFor: UserRole[];
-  summary: string;
-  sections: LegalAgreementSection[];
-}
+const VALID_ROLES: UserRole[] = ['owner', 'admin', 'trainer', 'client'];
+const FORBIDDEN_IDS = new Set(['__proto__', 'constructor', 'prototype']);
 
 export const LEGAL_AGREEMENTS: LegalAgreementDoc[] = [
   {
@@ -245,15 +242,241 @@ export const LEGAL_AGREEMENTS: LegalAgreementDoc[] = [
   },
 ];
 
-export function getLegalAgreementsForRole(role: UserRole): LegalAgreementDoc[] {
-  return LEGAL_AGREEMENTS.filter((doc) => doc.requiredFor.includes(role));
+function cloneDoc(doc: LegalAgreementDoc): LegalAgreementDoc {
+  return {
+    ...doc,
+    requiredFor: [...doc.requiredFor],
+    sections: doc.sections.map((s) => ({
+      heading: s.heading,
+      paragraphs: [...s.paragraphs],
+    })),
+  };
 }
 
-export function userNeedsLegalAcceptance(user: UserAccount | null | undefined): boolean {
+export function mergeLegalAgreements(
+  customDocs?: LegalAgreementDoc[] | null
+): LegalAgreementDoc[] {
+  if (!Array.isArray(customDocs) || customDocs.length === 0) {
+    return LEGAL_AGREEMENTS.map(cloneDoc);
+  }
+  const byId = new Map<string, LegalAgreementDoc>();
+  for (const doc of customDocs) {
+    if (doc && typeof doc.id === 'string' && !FORBIDDEN_IDS.has(doc.id)) {
+      byId.set(doc.id, cloneDoc(doc));
+    }
+  }
+  const result: LegalAgreementDoc[] = [];
+  const usedIds = new Set<string>();
+  for (const def of LEGAL_AGREEMENTS) {
+    const custom = byId.get(def.id);
+    result.push(custom ? cloneDoc(custom) : cloneDoc(def));
+    usedIds.add(def.id);
+  }
+  for (const doc of customDocs) {
+    if (doc && typeof doc.id === 'string' && !usedIds.has(doc.id) && !FORBIDDEN_IDS.has(doc.id)) {
+      result.push(cloneDoc(doc));
+      usedIds.add(doc.id);
+    }
+  }
+  return result;
+}
+
+export function sanitizeLegalDocumentsInput(
+  rawDocs: unknown
+): { ok: true; documents: LegalAgreementDoc[] } | { ok: false; error: string } {
+  if (!Array.isArray(rawDocs) || rawDocs.length === 0) {
+    return { ok: false, error: 'Передайте непустой список юридических документов.' };
+  }
+  if (rawDocs.length > 25) {
+    return { ok: false, error: 'Превышено допустимое количество документов (максимум 25).' };
+  }
+
+  const sanitized: LegalAgreementDoc[] = [];
+  const seenIds = new Set<string>();
+
+  for (let i = 0; i < rawDocs.length; i += 1) {
+    const item = rawDocs[i] as Record<string, unknown> | null;
+    if (!item || typeof item !== 'object') {
+      return { ok: false, error: `Некорректная структура документа №${i + 1}.` };
+    }
+    const rawId = typeof item.id === 'string' ? item.id.trim().toLowerCase() : '';
+    if (!/^[a-z0-9_-]{2,64}$/.test(rawId) || FORBIDDEN_IDS.has(rawId)) {
+      return { ok: false, error: `Недопустимый идентификатор документа №${i + 1}.` };
+    }
+    if (seenIds.has(rawId)) {
+      return { ok: false, error: `Дублируется идентификатор документа: ${rawId}.` };
+    }
+    seenIds.add(rawId);
+
+    const title = typeof item.title === 'string' ? item.title.trim() : '';
+    if (!title || title.length > 220) {
+      return {
+        ok: false,
+        error: `Укажите полное название документа №${i + 1} (от 1 до 220 символов).`,
+      };
+    }
+
+    const shortTitle =
+      typeof item.shortTitle === 'string' && item.shortTitle.trim()
+        ? item.shortTitle.trim()
+        : title.slice(0, 80);
+    if (shortTitle.length > 100) {
+      return {
+        ok: false,
+        error: `Краткое название документа «${shortTitle.slice(0, 30)}...» слишком длинное (макс. 100 символов).`,
+      };
+    }
+
+    const rawCat = typeof item.category === 'string' ? item.category.trim() : '';
+    const category: LegalAgreementCategory = LEGAL_AGREEMENT_CATEGORIES.includes(
+      rawCat as LegalAgreementCategory
+    )
+      ? (rawCat as LegalAgreementCategory)
+      : 'Конфиденциальность';
+
+    const version =
+      typeof item.version === 'string' && item.version.trim()
+        ? item.version.trim().slice(0, 24)
+        : '1.0';
+    const updatedAt =
+      typeof item.updatedAt === 'string' && item.updatedAt.trim()
+        ? item.updatedAt.trim().slice(0, 24)
+        : new Date().toISOString().slice(0, 10);
+
+    const summary =
+      typeof item.summary === 'string' ? item.summary.trim().slice(0, 600) : '';
+
+    const rawRoles = Array.isArray(item.requiredFor) ? item.requiredFor : [];
+    const roleSet = new Set<UserRole>(['owner']);
+    for (const r of rawRoles) {
+      if (typeof r === 'string' && VALID_ROLES.includes(r as UserRole)) {
+        roleSet.add(r as UserRole);
+      }
+    }
+    const requiredFor = VALID_ROLES.filter((r) => roleSet.has(r));
+
+    const rawSections = Array.isArray(item.sections) ? item.sections : [];
+    if (rawSections.length === 0 || rawSections.length > 30) {
+      return {
+        ok: false,
+        error: `Документ «${shortTitle}» должен содержать от 1 до 30 разделов.`,
+      };
+    }
+
+    const sections: LegalAgreementSection[] = [];
+    for (let sIdx = 0; sIdx < rawSections.length; sIdx += 1) {
+      const sec = rawSections[sIdx] as Record<string, unknown> | null;
+      if (!sec || typeof sec !== 'object') {
+        return {
+          ok: false,
+          error: `Некорректный раздел №${sIdx + 1} в документе «${shortTitle}».`,
+        };
+      }
+      const heading =
+        typeof sec.heading === 'string' ? sec.heading.trim().slice(0, 180) : '';
+      if (!heading) {
+        return {
+          ok: false,
+          error: `Заполните заголовок раздела №${sIdx + 1} в документе «${shortTitle}».`,
+        };
+      }
+      const rawParagraphs = Array.isArray(sec.paragraphs) ? sec.paragraphs : [];
+      const paragraphs = rawParagraphs
+        .filter((p): p is string => typeof p === 'string')
+        .map((p) => p.trim().slice(0, 4000))
+        .filter((p) => p.length > 0)
+        .slice(0, 40);
+      if (paragraphs.length === 0) {
+        return {
+          ok: false,
+          error: `Добавьте хотя бы один абзац текста в раздел «${heading}» документа «${shortTitle}».`,
+        };
+      }
+      sections.push({ heading, paragraphs });
+    }
+
+    sanitized.push({
+      id: rawId,
+      title,
+      shortTitle,
+      category,
+      version,
+      updatedAt,
+      requiredFor,
+      summary,
+      sections,
+    });
+  }
+
+  return { ok: true, documents: sanitized };
+}
+
+export function incrementLegalBundleVersion(current?: string): string {
+  const base = (current || CURRENT_LEGAL_BUNDLE_VERSION).trim();
+  const match = base.match(/^(\d{4})\.(\d+)$/);
+  if (match) {
+    return `${match[1]}.${Number(match[2]) + 1}`;
+  }
+  const numMatch = base.match(/^(.+\.)(\d+)$/);
+  if (numMatch) {
+    return `${numMatch[1]}${Number(numMatch[2]) + 1}`;
+  }
+  return `${base}.1`;
+}
+
+// Client-side synchronized bundle state so every modal & panel reflects owner edits live
+let activeDocsSnapshot: LegalAgreementDoc[] = LEGAL_AGREEMENTS.map(cloneDoc);
+let activeBundleVersion: string = CURRENT_LEGAL_BUNDLE_VERSION;
+const bundleListeners = new Set<() => void>();
+
+export function setActiveLegalBundle(
+  docs?: LegalAgreementDoc[] | null,
+  bundleVersion?: string | null
+): void {
+  activeDocsSnapshot = mergeLegalAgreements(docs);
+  if (typeof bundleVersion === 'string' && bundleVersion.trim()) {
+    activeBundleVersion = bundleVersion.trim();
+  }
+  for (const listener of bundleListeners) {
+    listener();
+  }
+}
+
+export function getActiveLegalDocuments(): LegalAgreementDoc[] {
+  return activeDocsSnapshot;
+}
+
+export function getActiveLegalBundleVersion(): string {
+  return activeBundleVersion;
+}
+
+export function subscribeLegalDocuments(listener: () => void): () => void {
+  bundleListeners.add(listener);
+  return () => {
+    bundleListeners.delete(listener);
+  };
+}
+
+export function getLegalAgreementsForRole(
+  role: UserRole,
+  customDocs?: LegalAgreementDoc[] | null
+): LegalAgreementDoc[] {
+  const docs = customDocs
+    ? mergeLegalAgreements(customDocs)
+    : activeDocsSnapshot;
+  return docs.filter((doc) => doc.requiredFor.includes(role));
+}
+
+export function userNeedsLegalAcceptance(
+  user: UserAccount | null | undefined,
+  bundleVersion?: string | null
+): boolean {
   if (!user) return false;
   if (user.role === 'owner') return false;
+  const expectedVersion = (bundleVersion || activeBundleVersion || CURRENT_LEGAL_BUNDLE_VERSION).trim();
   return (
     !user.legalAcceptedAt ||
-    user.legalAgreementsVersion !== CURRENT_LEGAL_BUNDLE_VERSION
+    user.legalAgreementsVersion !== expectedVersion
   );
 }
+

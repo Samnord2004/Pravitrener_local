@@ -1,9 +1,100 @@
-import type { EquipmentType, LiveHardwarePacket } from '../types';
+import type {
+  EquipmentType,
+  LiveHardwarePacket,
+  NativeBluetoothDeviceInfo,
+  NativeBluetoothProtocol,
+} from '../types';
+import { apiRequest } from './api';
 import { parseMiScale2Packet } from './miScale2';
+
+export interface NativeBluetoothBridgeEvent {
+  type: 'deviceFound' | 'connected' | 'disconnected' | 'error' | 'data';
+  device?: NativeBluetoothDeviceInfo;
+  address?: string;
+  deviceName?: string;
+  equipmentType?: EquipmentType;
+  protocol?: 'gatt' | 'spp';
+  services?: string[];
+  serviceUuid?: string;
+  charUuid?: string;
+  base64?: string;
+  line?: string;
+  reason?: string;
+  message?: string;
+}
+
+declare global {
+  interface Window {
+    EtalonNativeBluetooth?: {
+      isAvailable: () => boolean;
+      isEnabled?: () => boolean;
+      ensurePermissions?: () => boolean;
+      getPairedDevices: () => string;
+      startScan?: (deviceTypeHint: string) => void;
+      stopScan?: () => void;
+      connect: (address: string, equipmentType: string, protocol: string) => void;
+      disconnect: (address: string) => void;
+      write?: (address: string, text: string) => boolean;
+    };
+    __onEtalonNativeBluetoothEvent?: (event: NativeBluetoothBridgeEvent) => void;
+    praviloDesktop?: {
+      isDesktopApp?: boolean;
+      platform?: string;
+      getAppInfo?: () => Promise<{
+        version: string;
+        platform: string;
+        arch: string;
+        isPackaged: boolean;
+      }>;
+      checkGithubRelease?: (githubRepo: string) => Promise<{
+        currentVersion: string;
+        latestTag: string;
+        latestVersion: string;
+        updateAvailable: boolean;
+        releasePageUrl: string;
+        publishedAt: string;
+        dmgUrl: string;
+        dmgName: string;
+        exeUrl: string;
+        exeName: string;
+        preferredAssetUrl: string;
+        preferredAssetName: string;
+      }>;
+      downloadInstaller?: (payload: { url: string; fileName: string }) => Promise<{
+        ok: boolean;
+        savedPath: string;
+        fileName: string;
+      }>;
+      openGithubUrl?: (url: string) => Promise<boolean>;
+      bluetooth?: {
+        listDevices: () => Promise<{
+          platform: 'windows' | 'macos' | 'linux';
+          adapterSupported: boolean;
+          devices: NativeBluetoothDeviceInfo[];
+        }>;
+        connect: (params: {
+          type: EquipmentType;
+          deviceId: string;
+          deviceName?: string;
+          address?: string;
+          port?: string;
+          protocol?: NativeBluetoothProtocol;
+          baudRate?: number;
+        }) => Promise<{ success: boolean; deviceName: string; message: string }>;
+        disconnect: (type: EquipmentType) => Promise<boolean>;
+        write: (type: EquipmentType, command: string) => Promise<boolean>;
+        onEvent: (cb: (ev: NativeBluetoothBridgeEvent) => void) => () => void;
+      };
+    };
+  }
+}
 
 export interface HardwareCapabilities {
   webBluetooth: boolean;
   webSerial: boolean;
+  nativeAndroidBluetooth: boolean;
+  nativeDesktopBluetooth: boolean;
+  nativeBluetoothAvailable: boolean;
   secureContext: boolean;
   inIframe: boolean;
 }
@@ -11,9 +102,16 @@ export interface HardwareCapabilities {
 export function getHardwareCapabilities(): HardwareCapabilities {
   const nav = typeof navigator !== 'undefined' ? (navigator as Navigator & { bluetooth?: unknown; serial?: unknown }) : undefined;
   const inIframe = typeof window !== 'undefined' ? window.self !== window.top : false;
+  const nativeAndroidBluetooth =
+    typeof window !== 'undefined' && Boolean(window.EtalonNativeBluetooth?.isAvailable?.());
+  const nativeDesktopBluetooth =
+    typeof window !== 'undefined' && Boolean(window.praviloDesktop?.bluetooth);
   return {
     webBluetooth: Boolean(nav?.bluetooth && typeof (nav.bluetooth as { requestDevice?: unknown }).requestDevice === 'function'),
     webSerial: Boolean(nav?.serial && typeof (nav.serial as { requestPort?: unknown }).requestPort === 'function'),
+    nativeAndroidBluetooth,
+    nativeDesktopBluetooth,
+    nativeBluetoothAvailable: nativeAndroidBluetooth || nativeDesktopBluetooth || typeof window !== 'undefined',
     secureContext: typeof window !== 'undefined' ? Boolean(window.isSecureContext) : false,
     inIframe,
   };
@@ -63,7 +161,7 @@ export function formatHardwareError(err: unknown, contextLabel: string, type?: E
 export interface BlePairResult {
   success: boolean;
   deviceName?: string;
-  mode: 'web_bluetooth' | 'web_serial' | 'websocket_bridge';
+  mode: 'web_bluetooth' | 'native_bluetooth' | 'web_serial' | 'websocket_bridge';
   batteryPct?: number;
   discoveredServices?: string[];
   message: string;
@@ -1541,7 +1639,7 @@ export async function connectHardwareWebSocketBridge(params: {
 export interface BleBpMeasurementResult {
   success: boolean;
   cancelled?: boolean;
-  mode: 'web_bluetooth';
+  mode: 'web_bluetooth' | 'native_bluetooth';
   deviceName: string;
   sys: number;
   dia: number;
@@ -1551,6 +1649,651 @@ export interface BleBpMeasurementResult {
   discoveredServices?: string[];
   measuredAt: string;
   message: string;
+}
+
+function base64ToDataView(base64: string): DataView | null {
+  try {
+    const bin = atob(base64);
+    const bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) {
+      bytes[i] = bin.charCodeAt(i);
+    }
+    return new DataView(bytes.buffer);
+  } catch {
+    return null;
+  }
+}
+
+export function decodeNativeBluetoothPayload(params: {
+  type: EquipmentType;
+  deviceName: string;
+  base64?: string;
+  line?: string;
+  charUuid?: string;
+  serviceUuid?: string;
+  textBufRef: { current: string };
+  onPacket: (packet: LiveHardwarePacket) => void;
+  onProgress?: (msg: string) => void;
+}) {
+  const { type, deviceName, base64, line, charUuid, serviceUuid, textBufRef, onPacket, onProgress } =
+    params;
+  const ts = new Date().toISOString();
+  const dv = base64 ? base64ToDataView(base64) : null;
+
+  if (type === 'wahoo_tickr' && dv) {
+    const details = parseHeartRateDetails(dv);
+    if (details && details.bpm >= 0 && details.bpm < 250) {
+      onPacket({
+        type: 'wahoo_tickr',
+        source: 'native_bluetooth',
+        timestamp: ts,
+        deviceName,
+        heartRateBpm: details.bpm,
+        sensorContact: details.sensorContact,
+      });
+      return;
+    }
+  }
+
+  if (type === 'xiaomi_scale' && dv) {
+    const parsed = parseMiScale2Packet(dv);
+    if (parsed) {
+      onPacket({
+        type: 'xiaomi_scale',
+        source: 'native_bluetooth',
+        timestamp: ts,
+        deviceName,
+        weightKg: parsed.weightKg,
+        impedanceOhm: parsed.impedanceOhm,
+        stabilized: parsed.stabilized,
+      });
+    } else {
+      onProgress?.(`Сырой пакет весов (${serviceUuid || charUuid || 'BLE'}): ${formatDataViewHex(dv)}`);
+    }
+    return;
+  }
+
+  if (type === 'bp_b05') {
+    if (dv) {
+      if (charUuid?.toLowerCase().includes('2a36')) {
+        const mmHg = parseIntermediateCuffPressure(dv);
+        if (mmHg !== null) {
+          onProgress?.(`Манжета: ${mmHg} мм рт. ст.`);
+          return;
+        }
+      }
+      if (dv.byteLength >= 7 && (charUuid?.toLowerCase().includes('2a35') || (dv.getUint8(0) & 0xf8) === 0)) {
+        const parsed = parseBloodPressurePacket(dv);
+        if (isValidBpReading(parsed)) {
+          onPacket({
+            type: 'bp_b05',
+            source: 'native_bluetooth',
+            timestamp: ts,
+            deviceName,
+            sys: parsed.sys,
+            dia: parsed.dia,
+            map: Number.isFinite(parsed.map)
+              ? parsed.map
+              : Math.round(parsed.dia + (parsed.sys - parsed.dia) / 3),
+            pulse: parsed.pulse,
+          });
+          return;
+        }
+      }
+      const oem = parseOemBloodPressurePacket(dv);
+      if (oem) {
+        onPacket({
+          type: 'bp_b05',
+          source: 'native_bluetooth',
+          timestamp: ts,
+          deviceName,
+          sys: oem.sys,
+          dia: oem.dia,
+          map: oem.map,
+          pulse: oem.pulse,
+        });
+        return;
+      }
+    }
+    if (line) {
+      const encoded = new TextEncoder().encode(line);
+      const lineDv = new DataView(encoded.buffer, encoded.byteOffset, encoded.byteLength);
+      const oemLine = parseOemBloodPressurePacket(lineDv);
+      if (oemLine) {
+        onPacket({
+          type: 'bp_b05',
+          source: 'native_bluetooth',
+          timestamp: ts,
+          deviceName,
+          sys: oemLine.sys,
+          dia: oemLine.dia,
+          map: oemLine.map,
+          pulse: oemLine.pulse,
+        });
+      }
+    }
+    return;
+  }
+
+  if (type === 'myoblue_emg') {
+    if (dv) {
+      const parsed = parseMyoBluePacket(dv);
+      if (parsed) {
+        onPacket({
+          type: 'myoblue_emg',
+          source: 'native_bluetooth',
+          timestamp: ts,
+          deviceName,
+          emgCh1Mv: parsed.ch1Mv,
+          emgCh2Mv: parsed.ch2Mv,
+        });
+        return;
+      }
+    }
+    if (line) {
+      const encoded = new TextEncoder().encode(line);
+      const parsed = parseMyoBluePacket(new DataView(encoded.buffer));
+      if (parsed) {
+        onPacket({
+          type: 'myoblue_emg',
+          source: 'native_bluetooth',
+          timestamp: ts,
+          deviceName,
+          emgCh1Mv: parsed.ch1Mv,
+          emgCh2Mv: parsed.ch2Mv,
+        });
+      }
+    }
+    return;
+  }
+
+  if (type === 'esp32_limbs') {
+    if (dv && dv.byteLength === 16) {
+      const lh = Number(dv.getFloat32(0, true).toFixed(1));
+      const rh = Number(dv.getFloat32(4, true).toFixed(1));
+      const lf = Number(dv.getFloat32(8, true).toFixed(1));
+      const rf = Number(dv.getFloat32(12, true).toFixed(1));
+      if ([lh, rh, lf, rf].every((v) => Number.isFinite(v) && v >= -100 && v <= 3000)) {
+        onPacket({
+          type: 'esp32_limbs',
+          source: 'native_bluetooth',
+          timestamp: ts,
+          deviceName,
+          lh,
+          rh,
+          lf,
+          rf,
+        });
+        return;
+      }
+    }
+    const chunk =
+      line !== undefined
+        ? `${line}\n`
+        : dv
+        ? new TextDecoder().decode(dv.buffer.slice(dv.byteOffset, dv.byteOffset + dv.byteLength))
+        : '';
+    if (chunk) {
+      textBufRef.current += chunk;
+      const lines = textBufRef.current.split(/\r?\n/);
+      textBufRef.current = lines.pop() || '';
+      for (const l of lines) {
+        const parsed = parseEsp32TextOrJsonLine(l);
+        if (parsed) {
+          onPacket({
+            type: 'esp32_limbs',
+            source: 'native_bluetooth',
+            timestamp: ts,
+            deviceName,
+            batteryPct: parsed.batteryPct,
+            lh: parsed.lh,
+            rh: parsed.rh,
+            lf: parsed.lf,
+            rf: parsed.rf,
+          });
+        }
+      }
+    }
+  }
+}
+
+const nativeAndroidListeners = new Set<(ev: NativeBluetoothBridgeEvent) => void>();
+
+if (typeof window !== 'undefined') {
+  window.__onEtalonNativeBluetoothEvent = (ev: NativeBluetoothBridgeEvent) => {
+    nativeAndroidListeners.forEach((fn) => fn(ev));
+  };
+}
+
+export async function listNativeBluetoothDevices(): Promise<{
+  backend: 'android_bridge' | 'desktop_ipc' | 'server_local';
+  platform: string;
+  adapterSupported: boolean;
+  devices: NativeBluetoothDeviceInfo[];
+  note?: string;
+}> {
+  if (typeof window !== 'undefined' && window.EtalonNativeBluetooth?.isAvailable?.()) {
+    window.EtalonNativeBluetooth.ensurePermissions?.();
+    let devices: NativeBluetoothDeviceInfo[] = [];
+    try {
+      const raw = window.EtalonNativeBluetooth.getPairedDevices();
+      const parsed = JSON.parse(raw || '[]');
+      if (Array.isArray(parsed)) devices = parsed;
+    } catch {
+      devices = [];
+    }
+    return {
+      backend: 'android_bridge',
+      platform: 'android',
+      adapterSupported: window.EtalonNativeBluetooth.isEnabled?.() ?? true,
+      devices,
+      note: 'Штатный Bluetooth Android (сопряжённые устройства и поиск BLE / SPP).',
+    };
+  }
+
+  if (typeof window !== 'undefined' && window.praviloDesktop?.bluetooth) {
+    const res = await window.praviloDesktop.bluetooth.listDevices();
+    return {
+      backend: 'desktop_ipc',
+      platform: res.platform,
+      adapterSupported: res.adapterSupported,
+      devices: res.devices || [],
+      note: `Системный Bluetooth десктопа (${res.platform}).`,
+    };
+  }
+
+  try {
+    const res = await apiRequest<{
+      platform: string;
+      adapterSupported: boolean;
+      devices: NativeBluetoothDeviceInfo[];
+      note?: string;
+    }>('/api/hardware/native-bluetooth/devices');
+    return {
+      backend: 'server_local',
+      platform: res.platform,
+      adapterSupported: res.adapterSupported,
+      devices: res.devices || [],
+      note: res.note,
+    };
+  } catch {
+    return {
+      backend: 'server_local',
+      platform: 'browser',
+      adapterSupported: false,
+      devices: [],
+      note: 'Для подключения по штатному Bluetooth откройте десктопное приложение (Windows/macOS), Android-приложение или локальный сервер студии.',
+    };
+  }
+}
+
+export function subscribeAndroidBluetoothScan(
+  typeHint: EquipmentType,
+  onDeviceFound: (dev: NativeBluetoothDeviceInfo) => void,
+  onError?: (msg: string) => void
+): () => void {
+  if (typeof window === 'undefined' || !window.EtalonNativeBluetooth?.isAvailable?.()) {
+    return () => undefined;
+  }
+  const listener = (ev: NativeBluetoothBridgeEvent) => {
+    if (ev.type === 'deviceFound' && ev.device) {
+      onDeviceFound(ev.device);
+    } else if (ev.type === 'error' && ev.message) {
+      onError?.(ev.message);
+    }
+  };
+  nativeAndroidListeners.add(listener);
+  window.EtalonNativeBluetooth.startScan?.(typeHint);
+  return () => {
+    nativeAndroidListeners.delete(listener);
+    window.EtalonNativeBluetooth?.stopScan?.();
+  };
+}
+
+export async function connectNativeBluetoothStream(params: {
+  type: EquipmentType;
+  deviceId: string;
+  deviceName?: string;
+  address?: string;
+  port?: string;
+  protocol?: NativeBluetoothProtocol;
+  baudRate?: number;
+  onPacket: (packet: LiveHardwarePacket) => void;
+  onProgress?: (msg: string) => void;
+  onDisconnect: (reason?: string) => void;
+}): Promise<{ result: BlePairResult; handle?: ActiveHardwareHandle }> {
+  const targetAddress = params.address || params.port || params.deviceId;
+  const displayName = params.deviceName || targetAddress || 'Штатный Bluetooth';
+  const protocol = params.protocol || 'auto';
+  const textBufRef = { current: '' };
+
+  // 1. Android Native Bluetooth Bridge (WebView / Capacitor APK)
+  if (typeof window !== 'undefined' && window.EtalonNativeBluetooth?.isAvailable?.()) {
+    const bridge = window.EtalonNativeBluetooth;
+    if (!targetAddress) {
+      return {
+        result: {
+          success: false,
+          mode: 'native_bluetooth',
+          message: 'Выберите Bluetooth-устройство в списке штатного Bluetooth Android.',
+        },
+      };
+    }
+
+    return new Promise((resolve) => {
+      let settled = false;
+      let manualDisconnect = false;
+
+      const listener = (ev: NativeBluetoothBridgeEvent) => {
+        if (ev.address && ev.address !== targetAddress && ev.equipmentType !== params.type) {
+          return;
+        }
+        if (ev.type === 'connected' && !settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve({
+            result: {
+              success: true,
+              deviceName: ev.deviceName || displayName,
+              mode: 'native_bluetooth',
+              discoveredServices: ev.services,
+              message: `Подключено через штатный Bluetooth Android (${ev.protocol === 'spp' ? 'Classic SPP' : 'BLE GATT'}): ${ev.deviceName || displayName}.`,
+            },
+            handle: {
+              disconnect: async () => {
+                manualDisconnect = true;
+                nativeAndroidListeners.delete(listener);
+                bridge.disconnect(targetAddress);
+              },
+              sendCommand: bridge.write
+                ? async (cmd: string) => {
+                    bridge.write?.(targetAddress, cmd);
+                  }
+                : undefined,
+            },
+          });
+        } else if (ev.type === 'data') {
+          decodeNativeBluetoothPayload({
+            type: params.type,
+            deviceName: ev.deviceName || displayName,
+            base64: ev.base64,
+            line: ev.line,
+            charUuid: ev.charUuid,
+            serviceUuid: ev.serviceUuid,
+            textBufRef,
+            onPacket: params.onPacket,
+            onProgress: params.onProgress,
+          });
+        } else if (ev.type === 'error') {
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            nativeAndroidListeners.delete(listener);
+            resolve({
+              result: {
+                success: false,
+                mode: 'native_bluetooth',
+                message: ev.message || 'Ошибка подключения через штатный Bluetooth Android.',
+              },
+            });
+          } else {
+            params.onProgress?.(ev.message || 'Ошибка Android Bluetooth');
+          }
+        } else if (ev.type === 'disconnected') {
+          nativeAndroidListeners.delete(listener);
+          if (!settled) {
+            settled = true;
+            clearTimeout(timer);
+            resolve({
+              result: {
+                success: false,
+                mode: 'native_bluetooth',
+                message: ev.reason || 'Устройство отклонило соединение.',
+              },
+            });
+          } else if (!manualDisconnect) {
+            params.onDisconnect(ev.reason || 'Штатное Bluetooth-соединение Android завершено.');
+          }
+        }
+      };
+
+      const timer = setTimeout(() => {
+        if (!settled) {
+          settled = true;
+          nativeAndroidListeners.delete(listener);
+          bridge.disconnect(targetAddress);
+          resolve({
+            result: {
+              success: false,
+              mode: 'native_bluetooth',
+              message: `Таймаут подключения по штатному Bluetooth к ${displayName}.`,
+            },
+          });
+        }
+      }, 12000);
+
+      nativeAndroidListeners.add(listener);
+      bridge.connect(targetAddress, params.type, protocol);
+    });
+  }
+
+  // 2. Desktop Electron IPC Native Bluetooth (Windows / macOS)
+  if (typeof window !== 'undefined' && window.praviloDesktop?.bluetooth) {
+    const deskBt = window.praviloDesktop.bluetooth;
+    let manualDisconnect = false;
+    const unsub = deskBt.onEvent((ev) => {
+      if (ev.equipmentType && ev.equipmentType !== params.type) return;
+      if (ev.type === 'data') {
+        decodeNativeBluetoothPayload({
+          type: params.type,
+          deviceName: ev.deviceName || displayName,
+          base64: ev.base64,
+          line: ev.line,
+          charUuid: ev.charUuid,
+          serviceUuid: ev.serviceUuid,
+          textBufRef,
+          onPacket: params.onPacket,
+          onProgress: params.onProgress,
+        });
+      } else if (ev.type === 'disconnected' && !manualDisconnect) {
+        unsub();
+        params.onDisconnect(ev.reason || 'Штатное Bluetooth-соединение ПК завершено.');
+      }
+    });
+
+    const conn = await deskBt.connect({
+      type: params.type,
+      deviceId: params.deviceId,
+      deviceName: displayName,
+      address: params.address,
+      port: params.port,
+      protocol,
+      baudRate: params.baudRate,
+    });
+    if (!conn.success) {
+      unsub();
+      return {
+        result: {
+          success: false,
+          mode: 'native_bluetooth',
+          message: conn.message,
+        },
+      };
+    }
+
+    return {
+      result: {
+        success: true,
+        deviceName: conn.deviceName || displayName,
+        mode: 'native_bluetooth',
+        message: conn.message,
+      },
+      handle: {
+        disconnect: async () => {
+          manualDisconnect = true;
+          unsub();
+          await deskBt.disconnect(params.type);
+        },
+        sendCommand: async (cmd: string) => {
+          await deskBt.write(params.type, cmd);
+        },
+      },
+    };
+  }
+
+  // 3. Host OS Native Bluetooth API (/api/hardware/native-bluetooth/* -> WebSocket hardware:telemetry)
+  if (!targetAddress) {
+    return {
+      result: {
+        success: false,
+        mode: 'native_bluetooth',
+        message: 'Выберите сопряжённое устройство или COM/Serial Bluetooth-порт из списка.',
+      },
+    };
+  }
+
+  try {
+    const res = await apiRequest<{
+      success: boolean;
+      deviceName: string;
+      protocol: 'gatt' | 'spp';
+      message: string;
+    }>('/api/hardware/native-bluetooth/connect', {
+      method: 'POST',
+      body: JSON.stringify({
+        type: params.type,
+        deviceId: params.deviceId || targetAddress,
+        deviceName: displayName,
+        address: params.address,
+        port: params.port,
+        protocol,
+        baudRate: params.baudRate,
+      }),
+    });
+    return {
+      result: {
+        success: res.success,
+        deviceName: res.deviceName || displayName,
+        mode: 'native_bluetooth',
+        message: res.message,
+      },
+      handle: {
+        disconnect: async () => {
+          await apiRequest('/api/hardware/native-bluetooth/disconnect', {
+            method: 'POST',
+            body: JSON.stringify({ type: params.type }),
+          }).catch(() => undefined);
+        },
+        sendCommand: async (cmd: string) => {
+          await apiRequest('/api/hardware/native-bluetooth/write', {
+            method: 'POST',
+            body: JSON.stringify({ type: params.type, command: cmd }),
+          }).catch(() => undefined);
+        },
+      },
+    };
+  } catch (err) {
+    return {
+      result: {
+        success: false,
+        mode: 'native_bluetooth',
+        message: err instanceof Error ? err.message : 'Ошибка подключения через штатный Bluetooth ОС.',
+      },
+    };
+  }
+}
+
+export async function measureBloodPressureNative(opts: {
+  deviceId: string;
+  deviceName?: string;
+  address?: string;
+  port?: string;
+  protocol?: NativeBluetoothProtocol;
+  onProgress?: (msg: string) => void;
+}): Promise<BleBpMeasurementResult> {
+  const nowTime = new Date().toTimeString().slice(0, 5);
+  let activeHandle: ActiveHardwareHandle | undefined;
+
+  try {
+    const reading = await new Promise<{ sys: number; dia: number; map: number; pulse?: number; deviceName: string }>(
+      (resolve, reject) => {
+        const timeout = setTimeout(() => {
+          reject(
+            new Error(
+              'Таймаут ожидания замера с тонометра (60 сек). Запустите измерение (START / MEM) на манжете.'
+            )
+          );
+        }, 60000);
+
+        connectNativeBluetoothStream({
+          type: 'bp_b05',
+          deviceId: opts.deviceId,
+          deviceName: opts.deviceName,
+          address: opts.address,
+          port: opts.port,
+          protocol: opts.protocol,
+          onPacket: (pkt) => {
+            if (pkt.type === 'bp_b05' && pkt.sys && pkt.dia) {
+              clearTimeout(timeout);
+              resolve({
+                sys: pkt.sys,
+                dia: pkt.dia,
+                map: pkt.map || Math.round(pkt.dia + (pkt.sys - pkt.dia) / 3),
+                pulse: pkt.pulse,
+                deviceName: pkt.deviceName || opts.deviceName || 'Тонометр (Штатный BT)',
+              });
+            }
+          },
+          onProgress: opts.onProgress,
+          onDisconnect: (reason) => {
+            clearTimeout(timeout);
+            reject(new Error(reason || 'Штатный Bluetooth отключён во время замера.'));
+          },
+        })
+          .then(({ result, handle }) => {
+            activeHandle = handle;
+            if (!result.success) {
+              clearTimeout(timeout);
+              reject(new Error(result.message));
+            } else {
+              opts.onProgress?.(`Подключён ${result.deviceName} — запустите замер START / MEM`);
+            }
+          })
+          .catch((err) => {
+            clearTimeout(timeout);
+            reject(err);
+          });
+      }
+    );
+
+    return {
+      success: true,
+      mode: 'native_bluetooth',
+      deviceName: reading.deviceName,
+      sys: reading.sys,
+      dia: reading.dia,
+      map: reading.map,
+      pulse: reading.pulse || 0,
+      measuredAt: nowTime,
+      message: `Считано по штатному Bluetooth (${reading.deviceName}): ${reading.sys}/${reading.dia} мм рт. ст.${
+        reading.pulse ? `, пульс ${reading.pulse} уд/мин` : ''
+      }.`,
+    };
+  } catch (err) {
+    return {
+      success: false,
+      mode: 'native_bluetooth',
+      deviceName: opts.deviceName || 'Тонометр (Штатный BT)',
+      sys: 0,
+      dia: 0,
+      map: 0,
+      pulse: 0,
+      measuredAt: nowTime,
+      message: err instanceof Error ? err.message : String(err),
+    };
+  } finally {
+    await activeHandle?.disconnect().catch(() => undefined);
+  }
 }
 
 export async function measureBloodPressureBle(opts?: {
@@ -1573,8 +2316,8 @@ export async function measureBloodPressureBle(opts?: {
       pulse: 0,
       measuredAt: nowTime,
       message: caps.inIframe
-        ? 'Web Bluetooth заблокирован внутри iframe. Откройте приложение в отдельной вкладке по HTTPS для прямого подключения тонометра.'
-        : 'Web Bluetooth API недоступен в текущем браузере (требуется Chrome/Edge/Android Chrome по HTTPS).',
+        ? 'Web Bluetooth заблокирован внутри iframe. Откройте приложение в отдельной вкладке или подключите тонометр через «Штатный Bluetooth».'
+        : 'Web Bluetooth API недоступен в текущем браузере. Используйте кнопку «Штатный Bluetooth».',
     };
   }
 

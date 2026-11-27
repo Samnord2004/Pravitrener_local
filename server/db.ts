@@ -42,6 +42,32 @@ function cleanLegacySensorBrands(text: string): string {
     .replace(/\bB05\b/gi, 'Тонометр');
 }
 
+const LEGACY_METHODOLOGY_TITLE_MAP: Record<string, string> = {
+  'Спорт ZA ПравИло': 'ПравИло и спорт',
+  'Офис выбирает ПравИло': 'ПравИло и офис',
+  'Возраст ZA ПравИло': 'ПравИло и возраст',
+  'Дети ZA ПравИло': 'ПравИло и дети',
+  'Мамочки ZA ПравИло': 'ПравИло и мамочки',
+};
+
+function cleanLegacyMethodologyTitle(title: string): string {
+  const trimmed = (title || '').trim();
+  if (LEGACY_METHODOLOGY_TITLE_MAP[trimmed]) {
+    return LEGACY_METHODOLOGY_TITLE_MAP[trimmed];
+  }
+  if (/\bza\b/i.test(trimmed)) {
+    const cleaned = trimmed
+      .replace(/\s*\bza\b\s*ПравИло/gi, '')
+      .replace(/\bza\b/gi, '')
+      .replace(/\s{2,}/g, ' ')
+      .trim();
+    if (cleaned) {
+      return `ПравИло и ${cleaned.charAt(0).toLowerCase()}${cleaned.slice(1)}`;
+    }
+  }
+  return title;
+}
+
 function normalizeLegacyHardwareLabels(db: StudioDatabase): boolean {
   let changed = false;
 
@@ -89,6 +115,7 @@ function normalizeLegacyHardwareLabels(db: StudioDatabase): boolean {
     const nextPoints = (ba.whyUsPoints || []).map(cleanLegacySensorBrands);
     const nextBlocks = (ba.methodologyBlocks || []).map((b) => ({
       ...b,
+      title: cleanLegacyMethodologyTitle(b.title || ''),
       contraindicationsNote: b.contraindicationsNote ? cleanLegacySensorBrands(b.contraindicationsNote) : b.contraindicationsNote,
     }));
     if (
@@ -186,9 +213,38 @@ export function getDb(): StudioDatabase {
             email: u.email || `${u.login}@etalon-pravilo.ru`,
             emailVerified: u.emailVerified ?? true,
             employmentStatus: u.employmentStatus || (u.active === false ? 'fired' : 'working'),
+            ownerApproved: typeof u.ownerApproved === 'boolean' ? u.ownerApproved : true,
             tokenVersion: typeof u.tokenVersion === 'number' ? u.tokenVersion : 1,
             trainerProfile: u.trainerProfile ?? seedUser?.trainerProfile,
           };
+        });
+      }
+      if (Array.isArray(parsed.sessions)) {
+        const seedSessionsMap = new Map(createInitialDatabase().sessions.map((ss) => [ss.id, ss]));
+        parsed.sessions = parsed.sessions.map((s) => {
+          const seedSes = seedSessionsMap.get(s.id);
+          if (!seedSes) return s;
+          if (!Array.isArray(s.telemetrySeries) || s.telemetrySeries.length === 0) {
+            return {
+              ...seedSes,
+              ...s,
+              minWinchKg: s.minWinchKg ?? seedSes.minWinchKg,
+              minLimbLoads: s.minLimbLoads ?? seedSes.minLimbLoads,
+              emgStats: s.emgStats ?? seedSes.emgStats,
+              minHrBpm: s.minHrBpm ?? seedSes.minHrBpm,
+              maxHrBpm: s.maxHrBpm ?? seedSes.maxHrBpm,
+              weightBeforeKg: s.weightBeforeKg ?? seedSes.weightBeforeKg,
+              weightAfterKg: s.weightAfterKg ?? seedSes.weightAfterKg,
+              postureBeforeSummary: s.postureBeforeSummary ?? seedSes.postureBeforeSummary,
+              postureAfterSummary: s.postureAfterSummary ?? seedSes.postureAfterSummary,
+              completedExercises:
+                s.completedExercises?.some((ex) => typeof ex.clientRating === 'number')
+                  ? s.completedExercises
+                  : seedSes.completedExercises,
+              telemetrySeries: seedSes.telemetrySeries,
+            };
+          }
+          return s;
         });
       }
       if (Array.isArray(parsed.services)) {
@@ -258,11 +314,41 @@ export function getDb(): StudioDatabase {
             c.birthDate && /^\d{4}-\d{2}-\d{2}$/.test(c.birthDate)
               ? c.birthDate
               : `${c.birthYear || 1990}-05-14`;
+          const trainerUsers = (parsed.users || []).filter((u) => u.role === 'trainer');
+          const trainerById = new Map(trainerUsers.map((u) => [u.id, u]));
+          let assignedTrainerId = c.assignedTrainerId;
+          let assignedTrainerName = c.assignedTrainerName;
+          const revokedSet = new Set(Array.isArray(c.revokedTrainerIds) ? c.revokedTrainerIds : []);
+
+          if (assignedTrainerId) {
+            const tr = trainerById.get(assignedTrainerId);
+            if (tr) assignedTrainerName = tr.name;
+          } else {
+            const latestSes = (parsed.sessions || []).find(
+              (s) => s.clientId === c.id && trainerById.has(s.trainerId) && !revokedSet.has(s.trainerId)
+            );
+            const latestBk = (parsed.bookings || []).find(
+              (b) => b.clientId === c.id && b.status !== 'cancelled' && trainerById.has(b.trainerId) && !revokedSet.has(b.trainerId)
+            );
+            const inferredTrainer =
+              (latestSes ? trainerById.get(latestSes.trainerId) : undefined) ||
+              (latestBk ? trainerById.get(latestBk.trainerId) : undefined);
+            if (inferredTrainer) {
+              assignedTrainerId = inferredTrainer.id;
+              assignedTrainerName = inferredTrainer.name;
+            }
+          }
+
           return {
             ...c,
             gender,
             birthDate,
             clientStatus: c.clientStatus || 'active',
+            assignedTrainerId,
+            assignedTrainerName,
+            guestTrainerIds: Array.isArray(c.guestTrainerIds) ? c.guestTrainerIds : undefined,
+            revokedTrainerIds: Array.isArray(c.revokedTrainerIds) ? c.revokedTrainerIds : undefined,
+            handoverHistory: Array.isArray(c.handoverHistory) ? c.handoverHistory : undefined,
             anthropometry,
             postureAssessments: Array.isArray(c.postureAssessments) ? c.postureAssessments : [],
           };
@@ -372,6 +458,12 @@ export function getDb(): StudioDatabase {
       }
       if (!Array.isArray(parsed.legalAcceptances)) {
         parsed.legalAcceptances = [];
+      }
+      if (parsed.legalDocuments !== undefined && !Array.isArray(parsed.legalDocuments)) {
+        parsed.legalDocuments = undefined;
+      }
+      if (parsed.legalBundleVersion !== undefined && typeof parsed.legalBundleVersion !== 'string') {
+        parsed.legalBundleVersion = undefined;
       }
       if (normalizeLegacyHardwareLabels(parsed)) {
         saveDb(parsed);

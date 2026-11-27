@@ -20,18 +20,21 @@ import {
   Check,
   Loader2,
   Server,
+  Smartphone,
 } from 'lucide-react';
 import type {
   AnthropometryRecord,
   ClientProfile,
   EquipmentDevice,
   HardwareDeviceConfig,
+  NativeBluetoothProtocol,
   ScaleCalibrationConfig,
 } from '../types';
 import { apiRequest } from '../utils/api';
 import {
   getHardwareCapabilities,
   measureBloodPressureBle,
+  measureBloodPressureNative,
 } from '../utils/bluetooth';
 import {
   connectRealHardwareDevice,
@@ -44,6 +47,7 @@ import {
   calculateMiScale2Metrics,
   DEFAULT_MI_SCALE_CALIBRATION,
 } from '../utils/miScale2';
+import { NativeBluetoothModal } from './NativeBluetoothModal';
 
 interface EquipmentProps {
   equipment: EquipmentDevice[];
@@ -127,6 +131,10 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
   const [cfgEmgGain, setCfgEmgGain] = useState(1.0);
   const [cfgEmgBaseline, setCfgEmgBaseline] = useState(0);
   const [cfgScaleFactors, setCfgScaleFactors] = useState({ lh: 1, rh: 1, lf: 1, rf: 1 });
+  const [nativePickerState, setNativePickerState] = useState<{
+    device: EquipmentDevice;
+    bpCapture?: boolean;
+  } | null>(null);
 
   const handleClientChange = (id: string) => {
     setTargetClientId(id);
@@ -154,15 +162,31 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
 
   const handleConnect = async (
     dev: EquipmentDevice,
-    transportOverride?: 'web_bluetooth' | 'web_serial' | 'websocket_bridge',
-    acceptAllDevices?: boolean
+    transportOverride?: 'web_bluetooth' | 'native_bluetooth' | 'web_serial' | 'websocket_bridge',
+    acceptAllDevices?: boolean,
+    nativeSel?: {
+      deviceId: string;
+      deviceName: string;
+      address: string;
+      port?: string;
+      protocol: NativeBluetoothProtocol;
+    }
   ) => {
+    if (transportOverride === 'native_bluetooth' && !nativeSel) {
+      setNativePickerState({ device: dev });
+      return;
+    }
     setBusyDeviceId(dev.id);
     try {
       const res = await connectRealHardwareDevice({
         device: dev,
         transportOverride,
         acceptAllDevices,
+        nativeDeviceId: nativeSel?.deviceId,
+        nativeDeviceName: nativeSel?.deviceName,
+        nativeAddress: nativeSel?.address,
+        nativePort: nativeSel?.port,
+        nativeProtocol: nativeSel?.protocol,
         onDeviceUpdated,
         onDisconnectedNotice: (msg) => {
           setStatusKind('error');
@@ -198,14 +222,35 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
     }
   };
 
-  const handleCaptureBpB05 = async (acceptAllDevices?: boolean) => {
+  const handleCaptureBpB05 = async (
+    acceptAllDevices?: boolean,
+    nativeSel?: {
+      deviceId: string;
+      deviceName: string;
+      address: string;
+      port?: string;
+      protocol: NativeBluetoothProtocol;
+    }
+  ) => {
     if (bpBusy) return;
     setBpBusy(true);
     try {
       const b05 = equipment.find((d) => d.type === 'bp_b05');
       let lastProgressPatchAt = 0;
 
-      const res = await measureBloodPressureBle({
+      const res = nativeSel
+        ? await measureBloodPressureNative({
+            deviceId: nativeSel.deviceId,
+            deviceName: nativeSel.deviceName,
+            address: nativeSel.address,
+            port: nativeSel.port,
+            protocol: nativeSel.protocol,
+            onProgress: (progressMsg) => {
+              setStatusKind('info');
+              setStatusMessage(`Тонометр (Штатный BT): ${progressMsg}`);
+            },
+          })
+        : await measureBloodPressureBle({
         nameFilter: b05?.hardwareConfig?.deviceNameFilter,
         acceptAllDevices,
         onConnected: ({ deviceName, batteryPct, services }) => {
@@ -509,6 +554,11 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
           </div>
           <div className="flex flex-wrap items-center gap-2 text-[11px] font-mono">
             <span
+              className="px-2.5 py-1 rounded-md border border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300"
+            >
+              Штатный BT ({caps.nativeAndroidBluetooth ? 'Android' : caps.nativeDesktopBluetooth ? 'ПК' : 'ОС'}): Готов
+            </span>
+            <span
               className={`px-2.5 py-1 rounded-md border ${
                 caps.webBluetooth
                   ? 'border-emerald-500/50 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-700 dark:text-emerald-300'
@@ -634,12 +684,33 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
           <button
             type="button"
             disabled={bpBusy}
-            onClick={() => handleCaptureBpB05(false)}
+            onClick={() => {
+              const b05 = equipment.find((d) => d.type === 'bp_b05');
+              if (!caps.webBluetooth && b05) {
+                setNativePickerState({ device: b05, bpCapture: true });
+              } else {
+                handleCaptureBpB05(false);
+              }
+            }}
             className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border st-surface-muted text-xs font-medium hover:opacity-90 cursor-pointer disabled:opacity-60"
           >
             {bpBusy ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Bluetooth className="w-3.5 h-3.5 st-accent-text" />}
             <span>Замер тонометром BLE</span>
           </button>
+          {equipment.some((d) => d.type === 'bp_b05') && (
+            <button
+              type="button"
+              disabled={bpBusy}
+              onClick={() => {
+                const b05 = equipment.find((d) => d.type === 'bp_b05');
+                if (b05) setNativePickerState({ device: b05, bpCapture: true });
+              }}
+              className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border st-surface-muted text-xs font-medium hover:opacity-90 cursor-pointer disabled:opacity-60"
+            >
+              <Smartphone className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Тонометр (Штатный BT)</span>
+            </button>
+          )}
           <button
             type="button"
             disabled={!hasRealSyncData || syncingCard}
@@ -704,7 +775,9 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                   >
                     {isLive
                       ? `● ${
-                          dev.connectionMode === 'web_serial'
+                          dev.connectionMode === 'native_bluetooth'
+                            ? 'Штатный BT'
+                            : dev.connectionMode === 'web_serial'
                             ? 'USB'
                             : dev.connectionMode === 'websocket_bridge'
                             ? 'Wi-Fi / WS'
@@ -834,15 +907,24 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                     <button
                       type="button"
                       disabled={isBusy || (dev.type === 'bp_b05' && bpBusy)}
-                      onClick={() => handleConnect(dev, 'web_bluetooth', false)}
+                      onClick={() => setNativePickerState({ device: dev })}
                       className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-medium cursor-pointer disabled:opacity-60 whitespace-nowrap"
                     >
                       {isBusy || (dev.type === 'bp_b05' && bpBusy) ? (
                         <Loader2 className="w-3.5 h-3.5 animate-spin" />
                       ) : (
-                        <Bluetooth className="w-3.5 h-3.5" />
+                        <Smartphone className="w-3.5 h-3.5" />
                       )}
-                      <span>Подключить BLE</span>
+                      <span>Штатный BT (ПК / Телефон)</span>
+                    </button>
+                    <button
+                      type="button"
+                      disabled={isBusy || (dev.type === 'bp_b05' && bpBusy)}
+                      onClick={() => handleConnect(dev, 'web_bluetooth', false)}
+                      className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border st-border text-xs font-medium hover:opacity-85 cursor-pointer disabled:opacity-60 whitespace-nowrap"
+                    >
+                      <Bluetooth className="w-3.5 h-3.5 st-accent-text" />
+                      <span>Web BLE</span>
                     </button>
                     {(dev.type === 'wahoo_tickr' || dev.type === 'bp_b05' || dev.type === 'xiaomi_scale') && (
                       <button
@@ -959,6 +1041,7 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
                   onChange={(e) => setCfgTransport(e.target.value as HardwareDeviceConfig['transport'])}
                   className="w-full px-3 py-2 rounded-lg border st-border st-surface"
                 >
+                  <option value="native_bluetooth">Штатный Bluetooth ОС (ПК / Смартфон Android)</option>
                   <option value="web_bluetooth">Web Bluetooth GATT (прямой BLE в Chrome/Edge)</option>
                   {configuringDevice.type === 'esp32_limbs' && (
                     <option value="web_serial">USB-C / COM-порт (Web Serial API)</option>
@@ -1269,6 +1352,26 @@ export const EquipmentHardwareView: React.FC<EquipmentProps> = ({
             </div>
           </form>
         </div>
+      )}
+      {nativePickerState && (
+        <NativeBluetoothModal
+          device={nativePickerState.device}
+          titleOverride={
+            nativePickerState.bpCapture
+              ? 'Замер АД через штатный Bluetooth (ПК / Смартфон)'
+              : undefined
+          }
+          onClose={() => setNativePickerState(null)}
+          onSelectDevice={async (sel) => {
+            const target = nativePickerState;
+            setNativePickerState(null);
+            if (target.bpCapture) {
+              await handleCaptureBpB05(false, sel);
+            } else {
+              await handleConnect(target.device, 'native_bluetooth', false, sel);
+            }
+          }}
+        />
       )}
     </div>
   );

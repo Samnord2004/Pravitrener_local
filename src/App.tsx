@@ -22,6 +22,8 @@ import {
   Moon,
   ClipboardList,
   Scale,
+  Flag,
+  ArrowUpRight,
 } from 'lucide-react';
 import type {
   Booking,
@@ -49,6 +51,7 @@ import type {
   LiveHardwarePacket,
   TrainerBlogPost,
   BrandAboutInfo,
+  LegalAgreementDoc,
 } from './types';
 import {
   ingestHardwarePacket,
@@ -73,7 +76,10 @@ import { PublicBookingView } from './components/PublicBookingView';
 import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
 import { OverviewAnalyticsView } from './components/OverviewAnalyticsView';
 import { ScheduleBookingsView } from './components/ScheduleBookingsView';
-import { LiveTrainingSessionView } from './components/LiveTrainingSessionView';
+import {
+  LiveTrainingSessionView,
+  type ActiveLiveSessionBannerState,
+} from './components/LiveTrainingSessionView';
 import { ExercisesLibraryView } from './components/ExercisesLibraryView';
 import { ClientsDatabaseView } from './components/ClientsDatabaseView';
 import { EquipmentHardwareView } from './components/EquipmentHardwareView';
@@ -84,7 +90,10 @@ import { TrainerMobilePortalView } from './components/TrainerMobilePortalView';
 import { ProfileSettingsModal } from './components/ProfileSettingsModal';
 import { StaffPushPromptModal } from './components/StaffPushPromptModal';
 import { LegalAgreementsModal } from './components/LegalAgreementsModal';
-import { userNeedsLegalAcceptance } from './utils/legalAgreements';
+import {
+  setActiveLegalBundle,
+  userNeedsLegalAcceptance,
+} from './utils/legalAgreements';
 import {
   formatNewBookingAlert,
   getNotificationPermissionState,
@@ -137,6 +146,8 @@ interface AppStateData {
   reviews?: RatingReview[];
   brandAbout?: BrandAboutInfo;
   legalAcceptances?: LegalAcceptanceRecord[];
+  legalDocuments?: LegalAgreementDoc[];
+  legalBundleVersion?: string;
 }
 
 const ROLE_DEFAULT_TAB: Record<UserAccount['role'], NavTab> = {
@@ -174,6 +185,15 @@ export default function App() {
   const [selectedStudioId, setSelectedStudioId] = useState<string>('all');
   const [activeBookingForSession, setActiveBookingForSession] = useState<Booking | null>(null);
   const [activeProgramIdForSession, setActiveProgramIdForSession] = useState<string | null>(null);
+  const [activeSessionBanner, setActiveSessionBanner] = useState<ActiveLiveSessionBannerState>({
+    active: false,
+    clientName: '',
+    programTitle: '',
+    exerciseTitle: '',
+    sessionElapsedSec: 0,
+    isRunning: false,
+  });
+  const [finishSessionSignal, setFinishSessionSignal] = useState(0);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showLegalModal, setShowLegalModal] = useState(false);
@@ -257,24 +277,42 @@ export default function App() {
     try {
       const state = await apiRequest<AppStateData>('/api/state');
       setData(state);
+      if (state.legalDocuments || state.legalBundleVersion) {
+        setActiveLegalBundle(state.legalDocuments, state.legalBundleVersion);
+      }
       syncHardwareDeviceRegistry(state.equipment || []);
       saveCachedState({ user, state });
     } catch {
       const cached = loadCachedState<{ user: UserAccount; state: AppStateData }>();
       if (cached?.data?.state) {
         setData(cached.data.state);
+        if (cached.data.state.legalDocuments || cached.data.state.legalBundleVersion) {
+          setActiveLegalBundle(
+            cached.data.state.legalDocuments,
+            cached.data.state.legalBundleVersion
+          );
+        }
         syncHardwareDeviceRegistry(cached.data.state.equipment || []);
       }
     }
   }, []);
 
-  // Fetch public branding/home screen config on mount
+  // Fetch public branding/home screen config & public legal documents on mount
   useEffect(() => {
     fetch('/api/public/brand-about')
       .then((r) => (r.ok ? r.json() : null))
       .then((res) => {
         if (res && typeof res === 'object') {
           setPublicBrandAbout(res as BrandAboutInfo);
+        }
+      })
+      .catch(() => undefined);
+
+    fetch('/api/public/legal-agreements')
+      .then((r) => (r.ok ? r.json() : null))
+      .then((res: { documents?: LegalAgreementDoc[]; bundleVersion?: string } | null) => {
+        if (res && typeof res === 'object') {
+          setActiveLegalBundle(res.documents, res.bundleVersion);
         }
       })
       .catch(() => undefined);
@@ -669,8 +707,20 @@ export default function App() {
               setCurrentUser(u);
             }
           } else if (msg.event === 'client:updated') {
-            const cl = msg.payload as ClientProfile;
-            if (!cl || !cl.id) return;
+            const rawCl = msg.payload as ClientProfile;
+            if (!rawCl || !rawCl.id) return;
+            const viewer = currentUserRef.current;
+            const cl: ClientProfile =
+              viewer?.role === 'trainer'
+                ? {
+                    ...rawCl,
+                    userId: undefined,
+                    phone: 'Скрыто (защита базы)',
+                    email: 'Скрыто',
+                    telegram: 'Скрыто',
+                    telegramChatId: undefined,
+                  }
+                : rawCl;
             setData((prev) => {
               if (!prev) return prev;
               const exists = prev.clients.some((c) => c.id === cl.id);
@@ -681,6 +731,10 @@ export default function App() {
                   }
                 : prev;
             });
+          } else if (msg.event === 'client:transferred') {
+            if (currentUserRef.current) {
+              loadAppState(currentUserRef.current);
+            }
           } else if (msg.event === 'service:updated') {
             const srv = msg.payload as ServiceItem;
             setData((prev) => {
@@ -758,6 +812,22 @@ export default function App() {
                   : [rec, ...list],
               };
             });
+          } else if (msg.event === 'legal-docs:updated') {
+            const payload = msg.payload as {
+              documents?: LegalAgreementDoc[];
+              bundleVersion?: string;
+            };
+            if (!payload || !Array.isArray(payload.documents)) return;
+            setActiveLegalBundle(payload.documents, payload.bundleVersion);
+            setData((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    legalDocuments: payload.documents,
+                    legalBundleVersion: payload.bundleVersion || prev.legalBundleVersion,
+                  }
+                : prev
+            );
           }
         } catch {
           // Ignore malformed WS message
@@ -792,6 +862,14 @@ export default function App() {
     if (data?.brandAbout) {
       setPublicBrandAbout(data.brandAbout);
     }
+    setActiveSessionBanner({
+      active: false,
+      clientName: '',
+      programTitle: '',
+      exerciseTitle: '',
+      sessionElapsedSec: 0,
+      isRunning: false,
+    });
     setAuthToken(null);
     setCurrentUser(null);
     setData(null);
@@ -799,6 +877,16 @@ export default function App() {
     setShowStaffPushPrompt(false);
     setSessionNotice('');
   };
+
+  useEffect(() => {
+    if (!activeSessionBanner.active) return;
+    const onBeforeUnload = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+      e.returnValue = '';
+    };
+    window.addEventListener('beforeunload', onBeforeUnload);
+    return () => window.removeEventListener('beforeunload', onBeforeUnload);
+  }, [activeSessionBanner.active]);
 
   const unreadMessagesCount = useMemo(
     () =>
@@ -813,7 +901,6 @@ export default function App() {
     const role = currentUser.role;
     const all: { id: NavTab; label: string; badge?: number; icon: React.ComponentType<{ className?: string }>; roles: UserAccount['role'][] }[] = [
       { id: 'overview', label: 'Обзор и аналитика', icon: BarChart3, roles: ['owner', 'admin'] },
-      { id: 'trainer_portal', label: 'Приложение тренера (PWA)', icon: ClipboardList, roles: ['trainer', 'owner'] },
       { id: 'schedule', label: 'Расписание и записи', icon: CalendarClock, roles: ['owner', 'admin'] },
       { id: 'session', label: 'Тренировочная сессия', icon: Activity, roles: ['owner', 'admin', 'trainer'] },
       { id: 'exercises', label: 'База упражнений', icon: Dumbbell, roles: ['owner', 'admin', 'trainer'] },
@@ -827,6 +914,7 @@ export default function App() {
         icon: Send,
         roles: ['owner', 'admin'],
       },
+      { id: 'trainer_portal', label: 'Приложение тренера (PWA)', icon: ClipboardList, roles: ['trainer', 'owner'] },
       { id: 'client_portal', label: 'Кабинет клиента (PWA)', icon: Smartphone, roles: ['client', 'owner'] },
     ];
     return all.filter((item) => item.roles.includes(role));
@@ -1342,34 +1430,39 @@ export default function App() {
             />
           )}
 
-          {activeTab === 'session' && (
-            <LiveTrainingSessionView
-              currentUser={currentUser}
-              studios={data.studios}
-              clients={data.clients}
-              exercises={data.exercises}
-              programs={data.programs}
-              equipment={data.equipment}
-              clientSubscriptions={data.clientSubscriptions}
-              promos={data.promos}
-              activeBooking={activeBookingForSession}
-              initialProgramId={activeProgramIdForSession}
-              onSessionSaved={() => loadAppState(currentUser)}
-              onClientUpdated={(cl) =>
-                setData((prev) =>
-                  prev
-                    ? { ...prev, clients: prev.clients.map((c) => (c.id === cl.id ? cl : c)) }
-                    : prev
-                )
-              }
-              onDeviceUpdated={(dev) =>
-                setData((prev) =>
-                  prev
-                    ? { ...prev, equipment: prev.equipment.map((d) => (d.id === dev.id ? dev : d)) }
-                    : prev
-                )
-              }
-            />
+          {(activeTab === 'session' || activeSessionBanner.active) && currentUser.role !== 'client' && (
+            <div className={activeTab === 'session' ? 'lg:h-full' : 'hidden'}>
+              <LiveTrainingSessionView
+                currentUser={currentUser}
+                users={data.users}
+                studios={data.studios}
+                clients={data.clients}
+                exercises={data.exercises}
+                programs={data.programs}
+                equipment={data.equipment}
+                clientSubscriptions={data.clientSubscriptions}
+                promos={data.promos}
+                activeBooking={activeBookingForSession}
+                initialProgramId={activeProgramIdForSession}
+                openFinishModalSignal={finishSessionSignal}
+                onActiveSessionStateChange={setActiveSessionBanner}
+                onSessionSaved={() => loadAppState(currentUser)}
+                onClientUpdated={(cl) =>
+                  setData((prev) =>
+                    prev
+                      ? { ...prev, clients: prev.clients.map((c) => (c.id === cl.id ? cl : c)) }
+                      : prev
+                  )
+                }
+                onDeviceUpdated={(dev) =>
+                  setData((prev) =>
+                    prev
+                      ? { ...prev, equipment: prev.equipment.map((d) => (d.id === dev.id ? dev : d)) }
+                      : prev
+                  )
+                }
+              />
+            </div>
           )}
 
           {activeTab === 'exercises' && currentUser.role !== 'client' && (
@@ -1455,6 +1548,8 @@ export default function App() {
               clients={data.clients}
               sessions={data.sessions}
               clientSubscriptions={data.clientSubscriptions}
+              users={data.users}
+              currentUser={currentUser}
               scaleDevice={data.equipment.find((d) => d.type === 'xiaomi_scale')}
               onDeviceUpdated={(dev) =>
                 setData((prev) =>
@@ -1473,6 +1568,7 @@ export default function App() {
                     : prev
                 )
               }
+              onClientTransferred={() => loadAppState(currentUser)}
               onAnthropometryAdded={(clientId, rec) =>
                 setData((prev) =>
                   prev
@@ -1548,8 +1644,8 @@ export default function App() {
                     studioId: cl.studioId,
                     clientId: cl.id,
                     clientName: cl.name,
-                    trainerId: currentUser.id,
-                    trainerName: currentUser.name,
+                    trainerId: cl.assignedTrainerId || currentUser.id,
+                    trainerName: cl.assignedTrainerName || currentUser.name,
                     serviceId: data.services[0]?.id || '',
                     serviceName: data.services[0]?.name || 'Сессия',
                     priceRub: 4200,
@@ -1798,6 +1894,7 @@ export default function App() {
                     : prev
                 )
               }
+              onClientTransferred={() => loadAppState(currentUser)}
               onCurrentUserUpdated={(u) => {
                 setCurrentUser(u);
                 setData((prev) =>
@@ -2063,6 +2160,60 @@ export default function App() {
       </div>
       </div>
 
+      {/* Top-Right Non-Blocking Interactive Dialog for Uninterrupted Active Session */}
+      {activeSessionBanner.active && activeTab !== 'session' && (
+        <div
+          role="dialog"
+          aria-label="Продолжается тренировка"
+          className="fixed top-16 right-4 z-[55] w-80 max-w-[calc(100vw-2rem)] rounded-xl bg-slate-900/95 dark:bg-slate-950/95 text-white border border-emerald-400/50 p-3.5 shadow-2xl backdrop-blur-md space-y-2.5"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="relative flex h-2.5 w-2.5 shrink-0">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500" />
+              </span>
+              <span className="text-xs font-bold tracking-wide text-emerald-300 truncate">
+                Продолжается тренировка
+              </span>
+            </div>
+            <span className="font-mono text-xs font-bold tabular-nums text-cyan-300 shrink-0">
+              {String(Math.floor(activeSessionBanner.sessionElapsedSec / 60)).padStart(2, '0')}:
+              {String(activeSessionBanner.sessionElapsedSec % 60).padStart(2, '0')}
+            </span>
+          </div>
+
+          <div className="text-[11px] text-slate-200 leading-snug space-y-0.5">
+            <div className="font-semibold truncate">{activeSessionBanner.clientName}</div>
+            <div className="text-slate-400 truncate">
+              {activeSessionBanner.exerciseTitle} · запись данных идёт в фоне
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-1.5 pt-0.5">
+            <button
+              type="button"
+              onClick={() => setActiveTab('session')}
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white text-[11px] font-semibold cursor-pointer"
+            >
+              <ArrowUpRight className="w-3.5 h-3.5" />
+              <span>К тренировке</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('session');
+                setFinishSessionSignal((s) => s + 1);
+              }}
+              className="inline-flex items-center justify-center gap-1 px-2.5 py-1.5 rounded-lg border border-rose-400/50 bg-rose-950/60 hover:bg-rose-900/70 text-rose-200 text-[11px] font-semibold cursor-pointer"
+            >
+              <Flag className="w-3.5 h-3.5" />
+              <span>Окончить</span>
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Live Push Notification Toast */}
       {pushToast && (
         <div className="fixed top-4 right-4 z-50 max-w-sm rounded-xl st-hero-gradient text-white border border-white/20 p-4 shadow-xl space-y-1.5">
@@ -2152,12 +2303,14 @@ export default function App() {
       )}
 
       {/* Mandatory First-Login Legal Agreements & Read Confirmation Modal (Admin, Trainer, Client) */}
-      {(userNeedsLegalAcceptance(currentUser) || showLegalModal) && (
+      {(userNeedsLegalAcceptance(currentUser, data.legalBundleVersion) || showLegalModal) && (
         <LegalAgreementsModal
           role={currentUser.role}
           currentUser={currentUser}
-          mandatoryMode={userNeedsLegalAcceptance(currentUser)}
+          mandatoryMode={userNeedsLegalAcceptance(currentUser, data.legalBundleVersion)}
           brandName={data.brandAbout?.brandName}
+          customDocuments={data.legalDocuments}
+          bundleVersion={data.legalBundleVersion}
           onAccepted={({ user, record }) => {
             setCurrentUser(user);
             setShowLegalModal(false);
@@ -2175,7 +2328,7 @@ export default function App() {
             );
           }}
           onClose={() => {
-            if (!userNeedsLegalAcceptance(currentUser)) {
+            if (!userNeedsLegalAcceptance(currentUser, data.legalBundleVersion)) {
               setShowLegalModal(false);
             }
           }}
@@ -2183,7 +2336,9 @@ export default function App() {
       )}
 
       {/* First-login Staff Push Notification Permission Prompt (after Legal Agreements accepted) */}
-      {showStaffPushPrompt && isStaffRole(currentUser.role) && !userNeedsLegalAcceptance(currentUser) && (
+      {showStaffPushPrompt &&
+        isStaffRole(currentUser.role) &&
+        !userNeedsLegalAcceptance(currentUser, data.legalBundleVersion) && (
         <StaffPushPromptModal
           user={currentUser}
           onPermissionUpdated={(perm) => setPushPermission(perm)}

@@ -29,6 +29,9 @@ import {
   Bluetooth,
   BluetoothOff,
   UserCheck,
+  GitCompare,
+  FileText,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type {
   AnthropometryRecord,
@@ -71,6 +74,10 @@ import { PostureComparisonSection } from './PostureComparisonSection';
 import { TrainerAvatar, TrainerProfileEditorForm } from './TrainerProfileCard';
 import { DifficultyStars } from './DifficultyStars';
 import { LegalAgreementsModal, LegalAgreementsPanel } from './LegalAgreementsModal';
+import { SessionComparisonModal } from './SessionComparisonModal';
+import { SessionReportModal } from './SessionReportModal';
+import { ClientTransferModal, type ClientTransferResult } from './ClientTransferModal';
+import { NativeBluetoothModal } from './NativeBluetoothModal';
 import {
   computeProgramDifficulty,
   inferExerciseDifficulty,
@@ -94,6 +101,7 @@ interface TrainerPortalProps {
   scaleDevice?: EquipmentDevice;
   onDeviceUpdated?: (dev: EquipmentDevice) => void;
   onClientUpdated?: (c: ClientProfile) => void;
+  onClientTransferred?: (res: ClientTransferResult) => void;
   onCurrentUserUpdated?: (u: UserAccount) => void;
   onUserUpdated?: (u: UserAccount) => void;
   onAnthropometryAdded?: (clientId: string, rec: AnthropometryRecord) => void;
@@ -161,6 +169,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   scaleDevice,
   onDeviceUpdated,
   onClientUpdated,
+  onClientTransferred,
   onCurrentUserUpdated,
   onUserUpdated,
   onAnthropometryAdded,
@@ -203,6 +212,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   // Clients (No-copy protected) state
   const [clientQuery, setClientQuery] = useState('');
   const [selectedClientId, setSelectedClientId] = useState<string>(clients[0]?.id || '');
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [noteText, setNoteText] = useState('');
   const [savingNote, setSavingNote] = useState(false);
 
@@ -212,6 +222,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   const [scaleHeightBefore, setScaleHeightBefore] = useState('');
   const [scaleHeightAfter, setScaleHeightAfter] = useState('');
   const [scaleBusy, setScaleBusy] = useState(false);
+  const [showNativeScaleModal, setShowNativeScaleModal] = useState(false);
   const [scaleMsg, setScaleMsg] = useState('');
   const [scaleError, setScaleError] = useState(false);
   const [savingScaleAnthro, setSavingScaleAnthro] = useState(false);
@@ -269,8 +280,14 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   const [savingPost, setSavingPost] = useState(false);
   const [copiedPostId, setCopiedPostId] = useState<string | null>(null);
 
-  // History filter
+  // History filter & comparison / report modals
   const [historyQuery, setHistoryQuery] = useState('');
+  const [compareTarget, setCompareTarget] = useState<{
+    clientId: string;
+    clientName: string;
+    sessionId?: string;
+  } | null>(null);
+  const [reportModalSession, setReportModalSession] = useState<TrainingSessionRecord | null>(null);
 
   // Public Trainer Profile state
   const [trainerProfileSaving, setTrainerProfileSaving] = useState(false);
@@ -341,10 +358,30 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
   const trainerClients = useMemo(() => {
     if (currentUser.role === 'trainer') return clients;
     const ids = new Set<string>();
-    trainerBookings.forEach((b) => ids.add(b.clientId));
-    trainerSessions.forEach((s) => ids.add(s.clientId));
+    const revokedMap = new Map<string, Set<string>>();
+    clients.forEach((c) => {
+      if (Array.isArray(c.revokedTrainerIds) && c.revokedTrainerIds.length > 0) {
+        revokedMap.set(c.id, new Set(c.revokedTrainerIds));
+      }
+      if (c.assignedTrainerId === activeTrainerId) ids.add(c.id);
+      if (Array.isArray(c.guestTrainerIds) && c.guestTrainerIds.includes(activeTrainerId)) {
+        ids.add(c.id);
+      }
+    });
+    trainerBookings.forEach((b) => {
+      if (b.status !== 'cancelled') ids.add(b.clientId);
+    });
+    trainerSessions.forEach((s) => {
+      if (!revokedMap.get(s.clientId)?.has(activeTrainerId)) {
+        ids.add(s.clientId);
+      }
+    });
     programs.forEach((p) => {
-      if ((p.createdByUserId === activeTrainerId || p.createdBy === activeTrainer.name) && p.clientId) {
+      if (
+        (p.createdByUserId === activeTrainerId || p.createdBy === activeTrainer.name) &&
+        p.clientId &&
+        !revokedMap.get(p.clientId)?.has(activeTrainerId)
+      ) {
         ids.add(p.clientId);
       }
     });
@@ -487,10 +524,43 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
     scaleCalibration,
   ]);
 
+  const handleConnectScaleNative = async (sel: {
+    deviceId: string;
+    deviceName: string;
+    address: string;
+    port?: string;
+    protocol: 'auto' | 'gatt' | 'spp';
+  }) => {
+    if (!scaleDevice) return;
+    setScaleBusy(true);
+    setScaleError(false);
+    setScaleMsg('');
+    try {
+      const res = await connectRealHardwareDevice({
+        device: scaleDevice,
+        transportOverride: 'native_bluetooth',
+        nativeDeviceId: sel.deviceId,
+        nativeDeviceName: sel.deviceName,
+        nativeAddress: sel.address,
+        nativePort: sel.port,
+        nativeProtocol: sel.protocol,
+        onDeviceUpdated: onDeviceUpdated || (() => undefined),
+      });
+      setScaleError(!res.success);
+      setScaleMsg(res.message);
+    } finally {
+      setScaleBusy(false);
+    }
+  };
+
   const handleConnectScaleBle = async () => {
     if (!scaleDevice) {
       setScaleError(true);
       setScaleMsg('Весы Mi Body Composition Scale 2 не настроены в разделе оборудования.');
+      return;
+    }
+    if (!hwCaps.webBluetooth) {
+      setShowNativeScaleModal(true);
       return;
     }
     setScaleBusy(true);
@@ -1278,7 +1348,24 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                           {selectedClient.clientStatus === 'inactive' ? 'Не ходит' : 'Активный'}
                         </span>
                       </div>
-                      <p className="text-xs st-muted mt-1">
+                      <div className="flex flex-wrap items-center gap-2 text-[11px] mt-1.5">
+                        <span className="px-2 py-0.5 rounded st-surface-muted border st-border font-medium">
+                          Студия клиента: {studios.find((s) => s.id === selectedClient.studioId)?.name || 'Студия'}
+                        </span>
+                        {selectedClient.assignedTrainerName && (
+                          <span className="px-2 py-0.5 rounded st-surface-muted border st-border font-medium">
+                            Ведущий тренер: {selectedClient.assignedTrainerName}
+                          </span>
+                        )}
+                        {(selectedClient.studioId !== activeTrainer.studioId ||
+                          (selectedClient.assignedTrainerId &&
+                            selectedClient.assignedTrainerId !== activeTrainer.id)) && (
+                          <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-800 text-amber-700 dark:text-amber-300 font-semibold">
+                            Гостевое занятие / другая студия
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs st-muted mt-1.5">
                         Цель: <span className="font-medium">{selectedClient.goal}</span>
                       </p>
                       <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md st-surface-muted border st-border text-[11px] st-muted">
@@ -1315,14 +1402,92 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
 
                       <button
                         type="button"
+                        onClick={() =>
+                          onStartLiveSession({
+                            id: '',
+                            studioId: activeTrainer.studioId || selectedClient.studioId,
+                            clientId: selectedClient.id,
+                            clientName: selectedClient.name,
+                            trainerId: activeTrainer.id,
+                            trainerName: activeTrainer.name,
+                            serviceId: '',
+                            serviceName: 'Персональная сессия',
+                            priceRub: 4200,
+                            date: todayStr,
+                            time: new Date().toTimeString().slice(0, 5),
+                            durationMin: 60,
+                            status: 'in_progress',
+                            paymentStatus: 'unpaid',
+                            finalAmountRub: 4200,
+                            createdAt: todayStr,
+                          })
+                        }
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-emerald-600 text-white text-xs font-semibold hover:bg-emerald-500 cursor-pointer"
+                      >
+                        <Play className="w-3.5 h-3.5" />
+                        <span>Провести сессию</span>
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={() => setShowTransferModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border st-surface text-xs font-semibold hover:opacity-90 cursor-pointer"
+                      >
+                        <ArrowRightLeft className="w-3.5 h-3.5 st-accent-text" />
+                        <span>Передать тренеру</span>
+                      </button>
+
+                      <button
+                        type="button"
                         onClick={() => openNewProgramForm(selectedClient.id)}
                         className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer"
                       >
                         <Plus className="w-3.5 h-3.5" />
                         <span>Составить программу</span>
                       </button>
+
+                      {sessions.filter((s) => s.clientId === selectedClient.id).length >= 2 && (
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setCompareTarget({
+                              clientId: selectedClient.id,
+                              clientName: selectedClient.name,
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border st-border st-surface text-xs font-semibold hover:opacity-90 cursor-pointer"
+                        >
+                          <GitCompare className="w-3.5 h-3.5 st-accent-text" />
+                          <span>Сравнить 2 сессии</span>
+                        </button>
+                      )}
                     </div>
                   </div>
+
+                  {selectedClient.handoverHistory && selectedClient.handoverHistory.length > 0 && (
+                    <div className="p-3 rounded-lg st-surface-muted border st-border space-y-1.5 text-xs">
+                      <div className="font-semibold text-[11px] st-muted">
+                        История передач и занятий в других студиях
+                      </div>
+                      <div className="space-y-1 max-h-24 overflow-y-auto">
+                        {selectedClient.handoverHistory.slice(0, 4).map((h) => {
+                          const toSt = studios.find((s) => s.id === h.toStudioId);
+                          return (
+                            <div key={h.id} className="flex flex-wrap items-center justify-between gap-2 text-[11px]">
+                              <span>
+                                <strong>{h.mode === 'permanent' ? 'Передача' : 'Гостевое занятие'}</strong>
+                                {h.fromTrainerName ? ` (${h.fromTrainerName} → ${h.toTrainerName})` : ` → ${h.toTrainerName}`}
+                                {' · '}
+                                {toSt?.name || h.toStudioId}
+                                {h.note ? ` · ${h.note}` : ''}
+                              </span>
+                              <span className="font-mono text-[10px] st-muted">{h.date}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Contraindications */}
                   <div className="p-3 rounded-lg bg-rose-50/70 dark:bg-rose-950/25 border border-rose-200 dark:border-rose-800/50 text-xs">
@@ -1416,15 +1581,26 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                                 <span>Отключить весы</span>
                               </button>
                             ) : (
-                              <button
-                                type="button"
-                                disabled={scaleBusy}
-                                onClick={handleConnectScaleBle}
-                                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer disabled:opacity-50"
-                              >
-                                <Bluetooth className="w-3.5 h-3.5" />
-                                <span>{scaleBusy ? 'Поиск весов...' : 'Подключить Mi Scale 2'}</span>
-                              </button>
+                              <div className="flex flex-wrap items-center gap-2">
+                                <button
+                                  type="button"
+                                  disabled={scaleBusy}
+                                  onClick={() => scaleDevice && setShowNativeScaleModal(true)}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg st-accent-bg text-xs font-semibold cursor-pointer disabled:opacity-50"
+                                >
+                                  <Bluetooth className="w-3.5 h-3.5" />
+                                  <span>{scaleBusy ? 'Поиск весов...' : 'Весы (Штатный BT)'}</span>
+                                </button>
+                                <button
+                                  type="button"
+                                  disabled={scaleBusy}
+                                  onClick={handleConnectScaleBle}
+                                  className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border text-xs font-medium hover:opacity-85 cursor-pointer disabled:opacity-50"
+                                >
+                                  <Bluetooth className="w-3.5 h-3.5" />
+                                  <span>Web BLE</span>
+                                </button>
+                              </div>
                             )}
                           </div>
 
@@ -2494,6 +2670,7 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
             <div className="space-y-3" {...blockCopyProps}>
               {filteredSessions.map((ses) => {
                 const st = studios.find((s) => s.id === ses.studioId);
+                const clientAllSessions = sessions.filter((s) => s.clientId === ses.clientId);
                 return (
                   <div
                     key={ses.id}
@@ -2514,43 +2691,81 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                         </div>
                       </div>
 
-                      <button
-                        type="button"
-                        onClick={() =>
-                          exportSessionReportPdf({
-                            studioName: st?.name || 'ЭТАЛОН ПРАВИЛО',
-                            studioAddress: st?.address || '',
-                            clientName: ses.clientName,
-                            trainerName: ses.trainerName,
-                            programTitle: ses.programTitle,
-                            dateStr: ses.startedAt.slice(0, 10),
-                            durationSec: ses.durationSec,
-                            peakWinchKg: ses.peakWinchKg,
-                            avgSymmetryPct: ses.avgSymmetryPct,
-                            maxLimbLoads: ses.maxLimbLoads,
-                            avgHrBpm: ses.avgHrBpm,
-                            bpBefore: ses.bpBefore,
-                            bpAfter: ses.bpAfter,
-                            heightBeforeCm: ses.heightBeforeCm,
-                            heightAfterCm: ses.heightAfterCm,
-                            completedExercises: ses.completedExercises,
-                            telemetryHistory: [],
-                            notes: ses.notes,
-                            paymentLabel: PAYMENT_LABELS[ses.paymentMethod],
-                            amountPaidRub: ses.amountPaidRub,
-                          })
-                        }
-                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface text-xs font-medium hover:opacity-90 cursor-pointer self-start"
-                      >
-                        <FileDown className="w-3.5 h-3.5 st-accent-text" />
-                        <span>PDF отчёт</span>
-                      </button>
+                      <div className="flex flex-wrap items-center gap-1.5 self-start">
+                        <button
+                          type="button"
+                          onClick={() => setReportModalSession(ses)}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface text-xs font-medium hover:opacity-90 cursor-pointer"
+                        >
+                          <FileText className="w-3.5 h-3.5 st-accent-text" />
+                          <span>Отчёт</span>
+                        </button>
+                        {clientAllSessions.length >= 2 && (
+                          <button
+                            type="button"
+                            onClick={() =>
+                              setCompareTarget({
+                                clientId: ses.clientId,
+                                clientName: ses.clientName,
+                                sessionId: ses.id,
+                              })
+                            }
+                            className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface text-xs font-medium hover:opacity-90 cursor-pointer"
+                          >
+                            <GitCompare className="w-3.5 h-3.5 st-accent-text" />
+                            <span>Сравнить</span>
+                          </button>
+                        )}
+                        <button
+                          type="button"
+                          onClick={() =>
+                            exportSessionReportPdf({
+                              studioName: st?.name || 'ЭТАЛОН ПРАВИЛО',
+                              studioAddress: st?.address || '',
+                              clientName: ses.clientName,
+                              trainerName: ses.trainerName,
+                              programTitle: ses.programTitle,
+                              dateStr: ses.startedAt.slice(0, 10),
+                              durationSec: ses.durationSec,
+                              minWinchKg: ses.minWinchKg,
+                              peakWinchKg: ses.peakWinchKg,
+                              avgSymmetryPct: ses.avgSymmetryPct,
+                              minLimbLoads: ses.minLimbLoads,
+                              maxLimbLoads: ses.maxLimbLoads,
+                              emgStats: ses.emgStats,
+                              minHrBpm: ses.minHrBpm,
+                              avgHrBpm: ses.avgHrBpm,
+                              maxHrBpm: ses.maxHrBpm,
+                              bpBefore: ses.bpBefore,
+                              bpAfter: ses.bpAfter,
+                              heightBeforeCm: ses.heightBeforeCm,
+                              heightAfterCm: ses.heightAfterCm,
+                              weightBeforeKg: ses.weightBeforeKg,
+                              weightAfterKg: ses.weightAfterKg,
+                              postureBeforeSummary: ses.postureBeforeSummary,
+                              postureAfterSummary: ses.postureAfterSummary,
+                              completedExercises: ses.completedExercises,
+                              telemetryHistory: ses.telemetrySeries || [],
+                              notes: ses.notes,
+                              paymentLabel: PAYMENT_LABELS[ses.paymentMethod],
+                              amountPaidRub: ses.amountPaidRub,
+                            })
+                          }
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border st-border st-surface text-xs font-medium hover:opacity-90 cursor-pointer"
+                        >
+                          <FileDown className="w-3.5 h-3.5 st-accent-text" />
+                          <span>PDF</span>
+                        </button>
+                      </div>
                     </div>
 
                     <div className="grid grid-cols-2 sm:grid-cols-5 gap-2 text-xs font-mono">
                       <div className="p-2 rounded st-surface border st-border">
-                        <div className="text-[10px] font-sans st-muted">Макс. тяга</div>
-                        <div className="font-bold">{ses.peakWinchKg.toFixed(1)} кг</div>
+                        <div className="text-[10px] font-sans st-muted">Тяга (мин / макс)</div>
+                        <div className="font-bold">
+                          {ses.minWinchKg !== undefined ? `${ses.minWinchKg.toFixed(1)}–` : ''}
+                          {ses.peakWinchKg.toFixed(1)} кг
+                        </div>
                       </div>
                       <div className="p-2 rounded st-surface border st-border">
                         <div className="text-[10px] font-sans st-muted">Симметрия</div>
@@ -2566,13 +2781,13 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
                       <div className="p-2 rounded st-surface border st-border">
                         <div className="text-[10px] font-sans st-muted">АД до → после</div>
                         <div className="font-bold">
-                          {ses.bpBefore} → {ses.bpAfter}
+                          {ses.bpBefore || '—'} → {ses.bpAfter || '—'}
                         </div>
                       </div>
                       <div className="p-2 rounded st-surface border st-border">
                         <div className="text-[10px] font-sans st-muted">Пульс / Рост</div>
                         <div className="font-bold">
-                          {ses.avgHrBpm} уд/м
+                          {ses.avgHrBpm || '—'} уд/м
                           {ses.heightBeforeCm && ses.heightAfterCm
                             ? ` · +${(ses.heightAfterCm - ses.heightBeforeCm).toFixed(1)}см`
                             : ''}
@@ -2945,6 +3160,48 @@ export const TrainerMobilePortalView: React.FC<TrainerPortalProps> = ({
           brandName={brandName}
           onAccepted={onLegalAccepted}
           onClose={() => setShowLegalModal(false)}
+        />
+      )}
+
+      {compareTarget && (
+        <SessionComparisonModal
+          clientName={compareTarget.clientName}
+          sessions={sessions.filter((s) => s.clientId === compareTarget.clientId)}
+          initialSessionAId={compareTarget.sessionId}
+          onClose={() => setCompareTarget(null)}
+        />
+      )}
+
+      {reportModalSession && (
+        <SessionReportModal
+          session={reportModalSession}
+          studio={studios.find((s) => s.id === reportModalSession.studioId)}
+          onClose={() => setReportModalSession(null)}
+        />
+      )}
+
+      {showTransferModal && selectedClient && (
+        <ClientTransferModal
+          client={selectedClient}
+          studios={studios}
+          users={users}
+          currentUser={currentUser}
+          onClose={() => setShowTransferModal(false)}
+          onTransferred={(res) => {
+            onClientUpdated?.(res.client);
+            onClientTransferred?.(res);
+          }}
+        />
+      )}
+      {showNativeScaleModal && scaleDevice && (
+        <NativeBluetoothModal
+          device={scaleDevice}
+          titleOverride="Подключение весов через штатный Bluetooth (ПК / Android)"
+          onClose={() => setShowNativeScaleModal(false)}
+          onSelectDevice={async (sel) => {
+            setShowNativeScaleModal(false);
+            await handleConnectScaleNative(sel);
+          }}
         />
       )}
     </div>

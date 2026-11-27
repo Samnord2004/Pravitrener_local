@@ -14,6 +14,9 @@ import {
   Pencil,
   Trash2,
   X,
+  GitCompare,
+  FileText,
+  ArrowRightLeft,
 } from 'lucide-react';
 import type {
   AnthropometryRecord,
@@ -23,6 +26,7 @@ import type {
   EquipmentDevice,
   Studio,
   TrainingSessionRecord,
+  UserAccount,
 } from '../types';
 import { apiRequest } from '../utils/api';
 import {
@@ -37,6 +41,10 @@ import {
 import { getHardwareCapabilities } from '../utils/bluetooth';
 import { MiScale2Breakdown } from './MiScale2Breakdown';
 import { PostureComparisonSection } from './PostureComparisonSection';
+import { SessionComparisonModal } from './SessionComparisonModal';
+import { SessionReportModal } from './SessionReportModal';
+import { ClientTransferModal, type ClientTransferResult } from './ClientTransferModal';
+import { NativeBluetoothModal } from './NativeBluetoothModal';
 
 interface ClientsDatabaseProps {
   studios: Studio[];
@@ -44,10 +52,13 @@ interface ClientsDatabaseProps {
   clients: ClientProfile[];
   sessions: TrainingSessionRecord[];
   clientSubscriptions: ClientSubscription[];
+  users?: UserAccount[];
+  currentUser?: UserAccount;
   scaleDevice?: EquipmentDevice;
   onDeviceUpdated?: (dev: EquipmentDevice) => void;
   onClientAdded: (c: ClientProfile) => void;
   onClientUpdated: (c: ClientProfile) => void;
+  onClientTransferred?: (res: ClientTransferResult) => void;
   onAnthropometryAdded: (clientId: string, rec: AnthropometryRecord) => void;
   onAnthropometryUpdated: (clientId: string, rec: AnthropometryRecord) => void;
   onAnthropometryDeleted?: (clientId: string, recId: string) => void;
@@ -72,10 +83,13 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   clients,
   sessions,
   clientSubscriptions,
+  users = [],
+  currentUser,
   scaleDevice,
   onDeviceUpdated,
   onClientAdded,
   onClientUpdated,
+  onClientTransferred,
   onAnthropometryAdded,
   onAnthropometryUpdated,
   onAnthropometryDeleted,
@@ -87,12 +101,27 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const [selectedClientId, setSelectedClientId] = useState(clients[0]?.id || '');
   const [showAddClient, setShowAddClient] = useState(false);
   const [showEditClient, setShowEditClient] = useState(false);
+  const [showTransferModal, setShowTransferModal] = useState(false);
   const [showAddAnthro, setShowAddAnthro] = useState(false);
   const [editingAnthroId, setEditingAnthroId] = useState<string | null>(null);
   const [confirmDeleteAnthroId, setConfirmDeleteAnthroId] = useState<string | null>(null);
   const [busyDeleteAnthroId, setBusyDeleteAnthroId] = useState<string | null>(null);
   const [noteDraft, setNoteDraft] = useState('');
   const [postHeightInput, setPostHeightInput] = useState('');
+  const [showCompareModal, setShowCompareModal] = useState(false);
+  const [reportModalSession, setReportModalSession] = useState<TrainingSessionRecord | null>(null);
+
+  const activeTrainers = useMemo(
+    () =>
+      users.filter(
+        (u) =>
+          u.role === 'trainer' &&
+          u.active !== false &&
+          u.employmentStatus !== 'fired' &&
+          u.ownerApproved !== false
+      ),
+    [users]
+  );
 
   // Edit Client Personal Data Form
   const [editName, setEditName] = useState('');
@@ -102,6 +131,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const [editEmail, setEditEmail] = useState('');
   const [editTg, setEditTg] = useState('');
   const [editStudio, setEditStudio] = useState(studios[0]?.id || '');
+  const [editTrainerId, setEditTrainerId] = useState('');
   const [editGoal, setEditGoal] = useState('');
   const [editContra, setEditContra] = useState('');
   const [editStatus, setEditStatus] = useState<ClientActivityStatus>('active');
@@ -112,6 +142,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const liveSensors = useHardwareTelemetry();
   const hwCaps = useMemo(() => getHardwareCapabilities(), []);
   const [bleBusy, setBleBusy] = useState(false);
+  const [showNativeScaleModal, setShowNativeScaleModal] = useState(false);
   const [bleStatusMsg, setBleStatusMsg] = useState('');
   const [bleStatusError, setBleStatusError] = useState(false);
   const [directHeightCm, setDirectHeightCm] = useState<string>('');
@@ -125,6 +156,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
   const [cEmail, setCEmail] = useState('');
   const [cTg, setCTg] = useState('');
   const [cStudio, setCStudio] = useState(studios[0]?.id || '');
+  const [cTrainerId, setCTrainerId] = useState('');
   const [cGoal, setCGoal] = useState('');
   const [cContra, setCContra] = useState('');
 
@@ -307,6 +339,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
         email: cEmail,
         telegram: cTg,
         studioId: cStudio,
+        assignedTrainerId: cTrainerId || undefined,
         goal: cGoal,
         contraindications: cContra,
       }),
@@ -320,6 +353,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
     setCPhone('');
     setCEmail('');
     setCTg('');
+    setCTrainerId('');
   };
 
   const openEditClientModal = () => {
@@ -331,6 +365,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
     setEditEmail(activeClient.email || '');
     setEditTg(activeClient.telegram || '');
     setEditStudio(activeClient.studioId || studios[0]?.id || '');
+    setEditTrainerId(activeClient.assignedTrainerId || '');
     setEditGoal(activeClient.goal || '');
     setEditContra(activeClient.contraindications || '');
     setEditStatus(activeClient.clientStatus === 'inactive' ? 'inactive' : 'active');
@@ -354,6 +389,7 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
           email: editEmail.trim(),
           telegram: editTg.trim(),
           studioId: editStudio,
+          assignedTrainerId: editTrainerId,
           goal: editGoal.trim(),
           contraindications: editContra.trim(),
           clientStatus: editStatus,
@@ -425,10 +461,43 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
     scaleCalibration,
   ]);
 
+  const handleConnectScaleNative = async (sel: {
+    deviceId: string;
+    deviceName: string;
+    address: string;
+    port?: string;
+    protocol: 'auto' | 'gatt' | 'spp';
+  }) => {
+    if (!scaleDevice) return;
+    setBleBusy(true);
+    setBleStatusError(false);
+    setBleStatusMsg('');
+    try {
+      const res = await connectRealHardwareDevice({
+        device: scaleDevice,
+        transportOverride: 'native_bluetooth',
+        nativeDeviceId: sel.deviceId,
+        nativeDeviceName: sel.deviceName,
+        nativeAddress: sel.address,
+        nativePort: sel.port,
+        nativeProtocol: sel.protocol,
+        onDeviceUpdated: onDeviceUpdated || (() => undefined),
+      });
+      setBleStatusError(!res.success);
+      setBleStatusMsg(res.message);
+    } finally {
+      setBleBusy(false);
+    }
+  };
+
   const handleConnectScaleBle = async () => {
     if (!scaleDevice) {
       setBleStatusError(true);
       setBleStatusMsg('Весы Mi Body Composition Scale 2 не настроены в оборудовании студии.');
+      return;
+    }
+    if (!hwCaps.webBluetooth) {
+      setShowNativeScaleModal(true);
       return;
     }
     setBleBusy(true);
@@ -775,6 +844,19 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                 <div className="text-xs text-slate-500 mt-1">
                   {activeClient.gender === 'female' ? 'Женский профиль' : 'Мужской профиль'} · {activeClient.phone} · {activeClient.email} · {activeClient.telegram || 'Telegram не указан'}
                 </div>
+                <div className="flex flex-wrap items-center gap-2 text-xs mt-1.5">
+                  <span className="px-2 py-0.5 rounded bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 font-medium">
+                    Студия: {studios.find((s) => s.id === activeClient.studioId)?.name || 'Не указана'}
+                  </span>
+                  <span className="px-2 py-0.5 rounded bg-cyan-50 dark:bg-cyan-950/40 text-cyan-800 dark:text-cyan-300 font-medium">
+                    Ведущий тренер: {activeClient.assignedTrainerName || 'Не закреплён'}
+                  </span>
+                  {activeClient.guestTrainerIds && activeClient.guestTrainerIds.length > 0 && (
+                    <span className="px-2 py-0.5 rounded bg-amber-50 dark:bg-amber-950/40 text-amber-700 dark:text-amber-300 font-medium">
+                      Гостевой доступ: {activeClient.guestTrainerIds.length} трен.
+                    </span>
+                  )}
+                </div>
               </div>
               <div className="flex flex-wrap items-center gap-2">
                 <div className="inline-flex rounded-lg border border-slate-200 dark:border-slate-700 p-0.5 bg-slate-50 dark:bg-slate-800/60 text-xs">
@@ -833,6 +915,16 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                   <Pencil className="w-3.5 h-3.5 text-cyan-600" />
                   <span>Редактировать данные</span>
                 </button>
+                {activeTrainers.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={() => setShowTransferModal(true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg border border-cyan-300 dark:border-cyan-800 bg-cyan-50/70 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-200 text-xs font-semibold hover:opacity-90 cursor-pointer"
+                  >
+                    <ArrowRightLeft className="w-3.5 h-3.5" />
+                    <span>Передать тренеру</span>
+                  </button>
+                )}
                 <button
                   type="button"
                   onClick={openAnthroModal}
@@ -882,6 +974,35 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                 )}
               </div>
             </div>
+
+            {activeClient.handoverHistory && activeClient.handoverHistory.length > 0 && (
+              <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                <div className="text-[11px] font-semibold text-slate-500">
+                  История передач и гостевых занятий в других студиях
+                </div>
+                <div className="space-y-1 max-h-28 overflow-y-auto">
+                  {activeClient.handoverHistory.slice(0, 5).map((h) => {
+                    const toSt = studios.find((s) => s.id === h.toStudioId);
+                    return (
+                      <div
+                        key={h.id}
+                        className="text-[11px] px-2.5 py-1.5 rounded-lg bg-slate-50 dark:bg-slate-800/60 flex flex-wrap items-center justify-between gap-2"
+                      >
+                        <span>
+                          <strong className={h.mode === 'permanent' ? 'text-cyan-700 dark:text-cyan-300' : 'text-amber-700 dark:text-amber-300'}>
+                            {h.mode === 'permanent' ? 'Передача' : 'Гостевое занятие'}
+                          </strong>
+                          {h.fromTrainerName ? ` от ${h.fromTrainerName}` : ''} →{' '}
+                          <strong>{h.toTrainerName}</strong> ({toSt?.name || h.toStudioId})
+                          {h.note ? ` · ${h.note}` : ''}
+                        </span>
+                        <span className="font-mono text-[10px] text-slate-400">{h.date}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Latest Anthropometry: Height Before/After + All Mi Body Composition Scale 2 Metrics */}
@@ -957,15 +1078,26 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                       <span>Отключить</span>
                     </button>
                   ) : (
-                    <button
-                      type="button"
-                      disabled={bleBusy}
-                      onClick={handleConnectScaleBle}
-                      className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-cyan-600 text-white text-xs font-medium hover:opacity-90 cursor-pointer disabled:opacity-50"
-                    >
-                      <Bluetooth className="w-3.5 h-3.5" />
-                      <span>{bleBusy ? 'Поиск весов...' : 'Подключить весы BLE'}</span>
-                    </button>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <button
+                        type="button"
+                        disabled={bleBusy}
+                        onClick={() => scaleDevice && setShowNativeScaleModal(true)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-slate-900 dark:bg-cyan-600 text-white text-xs font-medium hover:opacity-90 cursor-pointer disabled:opacity-50"
+                      >
+                        <Bluetooth className="w-3.5 h-3.5" />
+                        <span>{bleBusy ? 'Поиск весов...' : 'Весы (Штатный BT)'}</span>
+                      </button>
+                      <button
+                        type="button"
+                        disabled={bleBusy}
+                        onClick={handleConnectScaleBle}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 text-xs font-medium hover:bg-white dark:hover:bg-slate-900 cursor-pointer disabled:opacity-50"
+                      >
+                        <Bluetooth className="w-3.5 h-3.5" />
+                        <span>Web BLE</span>
+                      </button>
+                    </div>
                   )}
                 </div>
               </div>
@@ -973,8 +1105,8 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
               {(!hwCaps.webBluetooth || hwCaps.inIframe) && !bleStatusMsg && (
                 <div className="text-[11px] text-amber-700 dark:text-amber-300">
                   {hwCaps.inIframe
-                    ? 'Примечание: при открытии в окне предпросмотра Web Bluetooth ограничен политикой iframe. Откройте приложение в отдельной вкладке или в Desktop-версии для прямого подключения весов.'
-                    : 'Браузер не поддерживает Web Bluetooth — используйте Chrome/Edge или Desktop-приложение ЭТАЛОН ПРАВИЛО.'}
+                    ? 'В окне предпросмотра Web BLE ограничен, поэтому используйте кнопку «Весы (Штатный BT)» (для ПК/Android) или откройте приложение в отдельной вкладке.'
+                    : 'Для подключения без Web BLE используйте кнопку «Весы (Штатный BT)» в приложении ПК (Windows/macOS) или Android.'}
                 </div>
               )}
 
@@ -1277,7 +1409,25 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
             </div>
 
             <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-5 space-y-3">
-              <h3 className="font-display text-base font-semibold">История тренировок и абонементы</h3>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <h3 className="font-display text-base font-semibold">История тренировок и абонементы</h3>
+                {clientSessions.length > 0 && (
+                  <button
+                    type="button"
+                    disabled={clientSessions.length < 2}
+                    onClick={() => setShowCompareModal(true)}
+                    title={
+                      clientSessions.length < 2
+                        ? 'Для сравнения требуется минимум 2 сессии клиента'
+                        : 'Сравнить графики тензодатчиков и миодатчиков двух сессий'
+                    }
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-cyan-300 dark:border-cyan-800 bg-cyan-50/70 dark:bg-cyan-950/30 text-cyan-800 dark:text-cyan-200 text-xs font-semibold hover:opacity-90 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                  >
+                    <GitCompare className="w-3.5 h-3.5" />
+                    <span>Сравнить 2 сессии</span>
+                  </button>
+                )}
+              </div>
               {clientSubs.map((sub) => (
                 <div
                   key={sub.id}
@@ -1294,11 +1444,11 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                   </div>
                 </div>
               ))}
-              <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-48 overflow-y-auto">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800 max-h-56 overflow-y-auto">
                 {clientSessions.map((ses) => (
                   <div key={ses.id} className="py-2.5 text-xs flex items-center justify-between gap-2">
-                    <div>
-                      <div className="font-medium">{ses.programTitle}</div>
+                    <div className="min-w-0">
+                      <div className="font-medium truncate">{ses.programTitle}</div>
                       <div className="text-slate-500">
                         {ses.startedAt.slice(0, 10)} · {ses.trainerName} · Симметрия {ses.avgSymmetryPct}%
                         {ses.heightBeforeCm && ses.heightAfterCm
@@ -1306,8 +1456,18 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                           : ''}
                       </div>
                     </div>
-                    <div className="font-mono font-semibold tabular-nums text-right">
-                      {ses.peakWinchKg.toFixed(1)} кг
+                    <div className="flex items-center gap-2 shrink-0">
+                      <div className="font-mono font-semibold tabular-nums text-right">
+                        {ses.peakWinchKg.toFixed(1)} кг
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setReportModalSession(ses)}
+                        className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-[11px] font-medium cursor-pointer"
+                      >
+                        <FileText className="w-3 h-3 text-cyan-600 dark:text-cyan-400" />
+                        <span>Отчёт</span>
+                      </button>
                     </div>
                   </div>
                 ))}
@@ -1394,6 +1554,21 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                 </select>
               </div>
             </div>
+            {activeTrainers.length > 0 && (
+              <div>
+                <label className="block text-[11px] font-medium text-slate-500 mb-1">Ведущий тренер</label>
+                <select
+                  value={cTrainerId}
+                  onChange={(e) => setCTrainerId(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                >
+                  <option value="">Не закреплён</option>
+                  {activeTrainers.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
             <input
               type="text"
               placeholder="Цель тренировок"
@@ -1538,6 +1713,22 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
                 </select>
               </div>
             </div>
+
+            {activeTrainers.length > 0 && (
+              <div>
+                <label className="block text-[11px] font-medium text-slate-500 mb-1">Ведущий тренер</label>
+                <select
+                  value={editTrainerId}
+                  onChange={(e) => setEditTrainerId(e.target.value)}
+                  className="w-full px-2.5 py-2 text-xs rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950"
+                >
+                  <option value="">Не закреплён</option>
+                  {activeTrainers.map((t) => (
+                    <option key={t.id} value={t.id}>{t.name}</option>
+                  ))}
+                </select>
+              </div>
+            )}
 
             <div>
               <label className="block text-[11px] font-medium text-slate-500 mb-1">Цель тренировок</label>
@@ -1960,6 +2151,47 @@ export const ClientsDatabaseView: React.FC<ClientsDatabaseProps> = ({
             </div>
           </form>
         </div>
+      )}
+
+      {showCompareModal && activeClient && (
+        <SessionComparisonModal
+          clientName={activeClient.name}
+          sessions={clientSessions}
+          onClose={() => setShowCompareModal(false)}
+        />
+      )}
+
+      {reportModalSession && (
+        <SessionReportModal
+          session={reportModalSession}
+          studio={studios.find((s) => s.id === reportModalSession.studioId)}
+          onClose={() => setReportModalSession(null)}
+        />
+      )}
+
+      {showTransferModal && activeClient && (
+        <ClientTransferModal
+          client={activeClient}
+          studios={studios}
+          users={users}
+          currentUser={currentUser}
+          onClose={() => setShowTransferModal(false)}
+          onTransferred={(res) => {
+            onClientUpdated(res.client);
+            onClientTransferred?.(res);
+          }}
+        />
+      )}
+      {showNativeScaleModal && scaleDevice && (
+        <NativeBluetoothModal
+          device={scaleDevice}
+          titleOverride="Подключение весов через штатный Bluetooth (ПК / Android)"
+          onClose={() => setShowNativeScaleModal(false)}
+          onSelectDevice={async (sel) => {
+            setShowNativeScaleModal(false);
+            await handleConnectScaleNative(sel);
+          }}
+        />
       )}
     </div>
   );

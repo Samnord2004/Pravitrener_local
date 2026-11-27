@@ -20,11 +20,13 @@
     "productName": "ЭТАЛОН ПРАВИЛО",
     "artifactName": "EtalonPravilo-${version}-${os}-${arch}.${ext}",
     "directories": {
+      "buildResources": "build",
       "output": "../release-desktop"
     },
     "files": [
       "main.cjs",
-      "preload.cjs"
+      "preload.cjs",
+      "nativeBluetoothDesktop.cjs"
     ],
     "extraResources": [
       {
@@ -32,8 +34,17 @@
         "to": "bundle"
       }
     ],
+    "publish": [
+      {
+        "provider": "github",
+        "releaseType": "release"
+      }
+    ],
     "mac": {
       "category": "public.app-category.healthcare-fitness",
+      "icon": "build/icon.png",
+      "hardenedRuntime": false,
+      "gatekeeperAssess": false,
       "target": [
         {
           "target": "dmg",
@@ -55,9 +66,30 @@
       }
     },
     "dmg": {
-      "title": "ЭТАЛОН ПРАВИЛО"
+      "title": "ЭТАЛОН ПРАВИЛО",
+      "icon": "build/icon.png",
+      "background": "build/dmg-background.png",
+      "iconSize": 96,
+      "window": {
+        "width": 560,
+        "height": 380
+      },
+      "contents": [
+        {
+          "x": 145,
+          "y": 185
+        },
+        {
+          "x": 415,
+          "y": 185,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "format": "UDZO"
     },
     "win": {
+      "icon": "build/icon.ico",
       "target": [
         {
           "target": "nsis",
@@ -74,10 +106,14 @@
       ]
     },
     "nsis": {
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
       "oneClick": false,
       "allowToChangeInstallationDirectory": true,
       "createDesktopShortcut": true,
       "createStartMenuShortcut": true,
+      "perMachine": false,
       "shortcutName": "ЭТАЛОН ПРАВИЛО",
       "installerLanguages": [
         "ru_RU",
@@ -85,6 +121,7 @@
       ]
     },
     "linux": {
+      "icon": "build/icon.png",
       "target": [
         "AppImage",
         "deb"

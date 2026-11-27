@@ -175,7 +175,7 @@ export const BrandAboutEditorModal: React.FC<BrandAboutEditorModalProps> = ({
       id: newId,
       slug: 'custom',
       badge: 'Новое направление',
-      title: 'Новое направление ZA ПравИло',
+      title: 'ПравИло и новое направление',
       subtitle: 'Описание аудитории и задач тренировки',
       quoteOrMotto: 'Возьми за правило заниматься на ПравИло!',
       promoBadge: 'Первое занятие',
@@ -672,7 +672,7 @@ export const BrandAboutEditorModal: React.FC<BrandAboutEditorModalProps> = ({
                         type="text"
                         value={activeBlock.title}
                         onChange={(e) => updateActiveBlock({ title: e.target.value })}
-                        placeholder="Например: Возраст ZA ПравИло"
+                        placeholder="Например: ПравИло и возраст"
                         className="w-full px-3 py-2 rounded-lg border st-border st-surface font-semibold"
                       />
                     </div>

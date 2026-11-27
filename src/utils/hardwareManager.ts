@@ -3,11 +3,13 @@ import type {
   EquipmentDevice,
   EquipmentType,
   LiveHardwarePacket,
+  NativeBluetoothProtocol,
 } from '../types';
 import { apiRequest } from './api';
 import {
   connectEsp32WebSerial,
   connectHardwareWebSocketBridge,
+  connectNativeBluetoothStream,
   connectRealBleDeviceStream,
   type ActiveHardwareHandle,
   type BlePairResult,
@@ -233,9 +235,14 @@ export function ingestHardwarePacket(
 
 export async function connectRealHardwareDevice(params: {
   device: EquipmentDevice;
-  transportOverride?: 'web_bluetooth' | 'web_serial' | 'websocket_bridge';
+  transportOverride?: 'web_bluetooth' | 'native_bluetooth' | 'web_serial' | 'websocket_bridge';
   bridgeUrlOverride?: string;
   acceptAllDevices?: boolean;
+  nativeDeviceId?: string;
+  nativeDeviceName?: string;
+  nativeAddress?: string;
+  nativePort?: string;
+  nativeProtocol?: NativeBluetoothProtocol;
   onDeviceUpdated: (dev: EquipmentDevice) => void;
   onDisconnectedNotice?: (reason: string) => void;
 }): Promise<BlePairResult> {
@@ -308,7 +315,26 @@ export async function connectRealHardwareDevice(params: {
 
   let outcome: { result: BlePairResult; handle?: ActiveHardwareHandle };
 
-  if (transport === 'web_serial') {
+  if (transport === 'native_bluetooth') {
+    const targetAddr =
+      params.nativeAddress ||
+      params.nativePort ||
+      params.nativeDeviceId ||
+      device.hardwareConfig?.nativeAddress ||
+      '';
+    outcome = await connectNativeBluetoothStream({
+      type: device.type,
+      deviceId: params.nativeDeviceId || targetAddr,
+      deviceName: params.nativeDeviceName || device.hardwareConfig?.lastDeviceName || device.name,
+      address: params.nativeAddress || device.hardwareConfig?.nativeAddress,
+      port: params.nativePort,
+      protocol: params.nativeProtocol || device.hardwareConfig?.nativeProtocol || 'auto',
+      baudRate: device.hardwareConfig?.serialBaudRate || 115200,
+      onPacket: (pkt) => ingestHardwarePacket(pkt, onDeviceUpdated),
+      onProgress,
+      onDisconnect,
+    });
+  } else if (transport === 'web_serial') {
     outcome = await connectEsp32WebSerial({
       baudRate: device.hardwareConfig?.serialBaudRate || 115200,
       onPacket: (pkt) => ingestHardwarePacket(pkt, onDeviceUpdated),
@@ -367,6 +393,10 @@ export async function connectRealHardwareDevice(params: {
         ...device.hardwareConfig,
         transport,
         ...(params.bridgeUrlOverride ? { bridgeUrl: params.bridgeUrlOverride } : {}),
+        ...(params.nativeAddress || params.nativePort || params.nativeDeviceId
+          ? { nativeAddress: params.nativePort || params.nativeAddress || params.nativeDeviceId }
+          : {}),
+        ...(params.nativeProtocol ? { nativeProtocol: params.nativeProtocol } : {}),
         lastDeviceName: outcome.result.deviceName,
       },
     };

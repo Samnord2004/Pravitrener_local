@@ -34,7 +34,11 @@ import type {
   UserAccount,
 } from '../types';
 import { apiRequest } from '../utils/api';
-import { LegalAgreementsPanel, OwnerLegalConfirmationsPanel } from './LegalAgreementsModal';
+import {
+  LegalAgreementsPanel,
+  OwnerLegalConfirmationsPanel,
+  OwnerLegalDocumentsEditor,
+} from './LegalAgreementsModal';
 
 interface NotificationsCenterProps {
   currentUser?: UserAccount;
@@ -1602,10 +1606,13 @@ export const NotificationsCenterView: React.FC<NotificationsCenterProps> = ({
       {subTab === 'legal' && (
         <div className="space-y-5">
           {currentUser?.role === 'owner' && (
-            <OwnerLegalConfirmationsPanel
-              confirmations={legalAcceptances}
-              onMarkedRead={onLegalMarkedRead}
-            />
+            <>
+              <OwnerLegalDocumentsEditor />
+              <OwnerLegalConfirmationsPanel
+                confirmations={legalAcceptances}
+                onMarkedRead={onLegalMarkedRead}
+              />
+            </>
           )}
           {currentUser && (
             <LegalAgreementsPanel

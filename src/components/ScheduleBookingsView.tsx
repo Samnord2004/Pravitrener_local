@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   Plus,
   Play,
@@ -286,9 +286,31 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
 
   // Push & Pull Drag State (Bookings + Trainer Shifts)
   const [dragBookingId, setDragBookingId] = useState<string | null>(null);
+  const dragBookingIdRef = useRef<string | null>(null);
   const [dragHoverSlot, setDragHoverSlot] = useState<string | null>(null); // `${date}|${time}` or date
-  const [dragShiftId, setDragShiftId] = useState<string | null>(null);
+  const [draggingShift, setDraggingShift] = useState<{
+    id: string;
+    fromDayIdx: number;
+    trainerName: string;
+    timeText: string;
+    studioName: string;
+    clientX: number;
+    clientY: number;
+  } | null>(null);
   const [dragHoverDayIdx, setDragHoverDayIdx] = useState<number | null>(null);
+  const [deletingShiftId, setDeletingShiftId] = useState<string | null>(null);
+  const shiftGridRef = useRef<HTMLDivElement | null>(null);
+  const shiftPointerDragRef = useRef<{
+    shift: TrainerSchedule;
+    trainerName: string;
+    studioName: string;
+    startX: number;
+    startY: number;
+    pointerId: number;
+    moved: boolean;
+  } | null>(null);
+  const dragHoverDayRef = useRef<number | null>(null);
+  const suppressShiftClickRef = useRef(false);
 
   const canManageSchedule = currentUser.role === 'owner' || currentUser.role === 'admin';
   const todayIso = toIsoDate(new Date());
@@ -589,39 +611,154 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
     }
   };
 
-  const handleDropShiftOnDay = async (targetDayIdx: number) => {
-    const id = dragShiftId;
-    setDragShiftId(null);
-    setDragHoverDayIdx(null);
-    if (!id || !canManageSchedule) return;
-    const sh = schedules.find((x) => x.id === id);
-    if (!sh || sh.dayOfWeek === targetDayIdx) return;
+  const moveShiftToDay = useCallback(
+    async (sh: TrainerSchedule, targetDayIdx: number) => {
+      if (!canManageSchedule || sh.dayOfWeek === targetDayIdx) return;
+      setLiveError('');
+      const prev = { ...sh };
+      onScheduleUpdated?.({ ...sh, dayOfWeek: targetDayIdx });
+      try {
+        const updated = await apiRequest<TrainerSchedule>(`/api/schedules/${sh.id}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ dayOfWeek: targetDayIdx }),
+        });
+        onScheduleUpdated?.(updated);
+      } catch (err) {
+        onScheduleUpdated?.(prev);
+        setLiveError(err instanceof Error ? err.message : 'Не удалось перенести смену');
+      }
+    },
+    [canManageSchedule, onScheduleUpdated]
+  );
 
-    const prev = { ...sh };
-    onScheduleUpdated?.({ ...sh, dayOfWeek: targetDayIdx });
-    try {
-      const updated = await apiRequest<TrainerSchedule>(`/api/schedules/${sh.id}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ dayOfWeek: targetDayIdx }),
-      });
-      onScheduleUpdated?.(updated);
-    } catch (err) {
-      onScheduleUpdated?.(prev);
-      setLiveError(err instanceof Error ? err.message : 'Не удалось перенести смену');
+  const detectHoveredShiftDay = (clientX: number, clientY: number): number | null => {
+    const container = shiftGridRef.current;
+    if (!container) return null;
+    const columns = container.querySelectorAll<HTMLElement>('[data-shift-day-idx]');
+    for (const col of columns) {
+      const rect = col.getBoundingClientRect();
+      if (
+        clientX >= rect.left &&
+        clientX <= rect.right &&
+        clientY >= rect.top &&
+        clientY <= rect.bottom
+      ) {
+        const raw = col.getAttribute('data-shift-day-idx');
+        const parsed = raw !== null ? Number(raw) : NaN;
+        if (Number.isInteger(parsed) && parsed >= 0 && parsed <= 6) {
+          return parsed;
+        }
+      }
     }
+    return null;
+  };
+
+  useEffect(() => {
+    const handlePointerMove = (ev: PointerEvent) => {
+      const active = shiftPointerDragRef.current;
+      if (!active || ev.pointerId !== active.pointerId) return;
+
+      const dist = Math.hypot(ev.clientX - active.startX, ev.clientY - active.startY);
+      if (!active.moved) {
+        if (dist < 5) return;
+        active.moved = true;
+      }
+
+      ev.preventDefault();
+      const hovered = detectHoveredShiftDay(ev.clientX, ev.clientY);
+      dragHoverDayRef.current = hovered;
+      setDragHoverDayIdx(hovered);
+      setDraggingShift({
+        id: active.shift.id,
+        fromDayIdx: active.shift.dayOfWeek,
+        trainerName: active.trainerName,
+        timeText: `${active.shift.startTime}–${active.shift.endTime}`,
+        studioName: active.studioName,
+        clientX: ev.clientX,
+        clientY: ev.clientY,
+      });
+    };
+
+    const finishPointerDrag = (ev: PointerEvent, isDrop: boolean) => {
+      const active = shiftPointerDragRef.current;
+      if (!active || ev.pointerId !== active.pointerId) return;
+      const wasMoved = active.moved;
+      const shift = active.shift;
+      const targetDay = isDrop
+        ? detectHoveredShiftDay(ev.clientX, ev.clientY) ?? dragHoverDayRef.current
+        : null;
+
+      shiftPointerDragRef.current = null;
+      dragHoverDayRef.current = null;
+      setDraggingShift(null);
+      setDragHoverDayIdx(null);
+
+      if (wasMoved) {
+        suppressShiftClickRef.current = true;
+        window.setTimeout(() => {
+          suppressShiftClickRef.current = false;
+        }, 160);
+        if (targetDay !== null && targetDay !== shift.dayOfWeek) {
+          void moveShiftToDay(shift, targetDay);
+        }
+      }
+    };
+
+    const onPointerUp = (ev: PointerEvent) => finishPointerDrag(ev, true);
+    const onPointerCancel = (ev: PointerEvent) => finishPointerDrag(ev, false);
+
+    window.addEventListener('pointermove', handlePointerMove, { passive: false });
+    window.addEventListener('pointerup', onPointerUp);
+    window.addEventListener('pointercancel', onPointerCancel);
+    return () => {
+      window.removeEventListener('pointermove', handlePointerMove);
+      window.removeEventListener('pointerup', onPointerUp);
+      window.removeEventListener('pointercancel', onPointerCancel);
+    };
+  }, [moveShiftToDay]);
+
+  const handleShiftPointerDown = (
+    e: React.PointerEvent<HTMLDivElement>,
+    sh: TrainerSchedule,
+    trainerName: string,
+    studioName: string
+  ) => {
+    if (!canManageSchedule) return;
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+    const targetEl = e.target as HTMLElement | null;
+    if (targetEl?.closest('[data-no-drag="true"], button, a, input, select, textarea')) {
+      return;
+    }
+    shiftPointerDragRef.current = {
+      shift: sh,
+      trainerName,
+      studioName,
+      startX: e.clientX,
+      startY: e.clientY,
+      pointerId: e.pointerId,
+      moved: false,
+    };
+    dragHoverDayRef.current = sh.dayOfWeek;
   };
 
   const handleDeleteShift = async (id: string) => {
+    if (!canManageSchedule || deletingShiftId === id) return;
     setLiveError('');
+    setShiftError('');
+    setDeletingShiftId(id);
     try {
-      await apiRequest(`/api/schedules/${id}`, { method: 'DELETE' });
+      await apiRequest(`/api/schedules/${encodeURIComponent(id)}`, { method: 'DELETE' });
       onScheduleDeleted(id);
       if (editingShift?.id === id) {
         setShowShiftModal(false);
         setEditingShift(null);
       }
     } catch (err) {
-      setLiveError(err instanceof Error ? err.message : 'Не удалось удалить смену');
+      const msg = err instanceof Error ? err.message : 'Не удалось удалить смену';
+      setLiveError(msg);
+      setShiftError(msg);
+    } finally {
+      setDeletingShiftId((cur) => (cur === id ? null : cur));
     }
   };
 
@@ -986,6 +1123,12 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
                                 {subBookings.map((bk) => {
                                   const meta = STATUS_LABELS[bk.status];
                                   const isDragging = dragBookingId === bk.id;
+                                  const bkClient = clients.find((c) => c.id === bk.clientId);
+                                  const isGuestBooking = Boolean(
+                                    bkClient &&
+                                      (bk.studioId !== bkClient.studioId ||
+                                        (bkClient.assignedTrainerId && bk.trainerId !== bkClient.assignedTrainerId))
+                                  );
                                   return (
                                     <div
                                       key={bk.id}
@@ -1027,6 +1170,7 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
                                       </div>
                                       <div className="text-[10px] st-muted truncate">
                                         {bk.trainerName} · {bk.durationMin}м
+                                        {isGuestBooking ? ' · гость' : ''}
                                       </div>
                                     </div>
                                   );
@@ -1204,7 +1348,16 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
                             {bk.time} · {bk.durationMin} мин
                           </div>
                         </td>
-                        <td className="py-3 px-5 font-medium">{bk.clientName}</td>
+                        <td className="py-3 px-5 font-medium">
+                          <div>{bk.clientName}</div>
+                          {cl &&
+                            (bk.studioId !== cl.studioId ||
+                              (cl.assignedTrainerId && bk.trainerId !== cl.assignedTrainerId)) && (
+                              <div className="text-[10px] font-semibold text-amber-600 dark:text-amber-400">
+                                Гостевое занятие / другая студия
+                              </div>
+                            )}
+                        </td>
                         <td className="py-3 px-5">
                           <div>{bk.serviceName}</div>
                           <div className="text-xs st-muted">{st?.name || 'Студия'}</div>
@@ -1323,7 +1476,7 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
         </div>
       )}
 
-      {/* Trainer Shift Schedule (Real-time Editable + Push & Pull Across Days) */}
+      {/* Trainer Shift Schedule (Real-time Editable + Pointer Drag & Drop Across Days) */}
       <div className="rounded-xl st-surface border st-border overflow-hidden">
         <div className="px-5 py-4 border-b st-border flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -1331,7 +1484,7 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
               График работы тренеров по дням недели
             </h3>
             <p className="text-xs st-muted mt-0.5">
-              Редактируется в реальном времени · Нажмите на смену для изменения или перетащите на другой день
+              Редактируется в реальном времени · Перетащите карточку смены на другой день недели, нажмите для правки или удалите кнопкой корзины
             </p>
           </div>
           {canManageSchedule && (
@@ -1346,32 +1499,26 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
           )}
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-7 divide-y md:divide-y-0 md:divide-x st-border">
+        <div
+          ref={shiftGridRef}
+          className="grid grid-cols-1 md:grid-cols-7 divide-y md:divide-y-0 md:divide-x st-border"
+        >
           {DAYS.map((dayName, idx) => {
             const dayShifts = schedules.filter(
               (s) =>
                 s.dayOfWeek === idx &&
                 (selectedStudioId === 'all' || s.studioId === selectedStudioId)
             );
-            const isDropTarget = dragHoverDayIdx === idx;
+            const isDropTarget =
+              Boolean(draggingShift) &&
+              dragHoverDayIdx === idx &&
+              draggingShift?.fromDayIdx !== idx;
             return (
               <div
                 key={dayName}
-                onDragOver={(e) => {
-                  if (!dragShiftId || !canManageSchedule) return;
-                  e.preventDefault();
-                  e.dataTransfer.dropEffect = 'move';
-                  if (dragHoverDayIdx !== idx) setDragHoverDayIdx(idx);
-                }}
-                onDragLeave={() => {
-                  if (dragHoverDayIdx === idx) setDragHoverDayIdx(null);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  handleDropShiftOnDay(idx);
-                }}
-                className={`p-3.5 space-y-2 min-h-[140px] transition-colors ${
-                  isDropTarget ? 'bg-cyan-500/15 ring-1 ring-inset ring-cyan-500' : ''
+                data-shift-day-idx={idx}
+                className={`p-3 space-y-2 min-h-[150px] transition-colors ${
+                  isDropTarget ? 'bg-cyan-500/15 ring-2 ring-inset ring-cyan-500' : ''
                 }`}
               >
                 <div className="flex items-center justify-between pb-1.5 border-b st-border">
@@ -1381,80 +1528,105 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
                       type="button"
                       onClick={() => openAddShiftModal(idx)}
                       title={`Добавить смену (${FULL_DAYS[idx]})`}
-                      className="p-0.5 rounded st-muted hover:opacity-100 opacity-70 cursor-pointer"
+                      className="p-1 rounded st-muted hover:opacity-100 opacity-75 cursor-pointer"
                     >
                       <Plus className="w-3.5 h-3.5" />
                     </button>
                   )}
                 </div>
 
+                {isDropTarget && (
+                  <div className="px-2 py-1 rounded-md border border-dashed border-cyan-500/70 bg-cyan-500/10 text-[10px] font-medium st-accent-text text-center">
+                    Перенести в {dayName}
+                  </div>
+                )}
+
                 {dayShifts.map((sh) => {
                   const tr = trainers.find((t) => t.id === sh.trainerId);
                   const st = studios.find((s) => s.id === sh.studioId);
                   const isPaused = sh.active === false;
+                  const isBeingDragged = draggingShift?.id === sh.id;
+                  const isDeleting = deletingShiftId === sh.id;
                   const trStats = tr ? getRatingStats(reviews, 'trainer', tr.id) : { average: 0, count: 0 };
                   return (
                     <div
                       key={sh.id}
-                      draggable={canManageSchedule}
-                      onDragStart={(e) => {
-                        if (!canManageSchedule) return;
-                        setDragShiftId(sh.id);
-                        e.dataTransfer.effectAllowed = 'move';
-                        e.dataTransfer.setData('text/plain', sh.id);
-                      }}
-                      onDragEnd={() => {
-                        setDragShiftId(null);
-                        setDragHoverDayIdx(null);
-                      }}
+                      onPointerDown={(e) =>
+                        handleShiftPointerDown(e, sh, tr?.name || 'Тренер', st?.name || '')
+                      }
                       onClick={() => {
+                        if (suppressShiftClickRef.current) return;
                         if (canManageSchedule) openEditShiftModal(sh);
                       }}
-                      className={`p-2 rounded-lg st-surface-muted border st-border text-xs space-y-0.5 relative group transition-all ${
-                        canManageSchedule ? 'cursor-pointer hover:shadow-sm' : ''
-                      } ${isPaused ? 'opacity-60' : ''}`}
+                      className={`p-2 rounded-lg st-surface-muted border st-border text-xs space-y-1 select-none transition-all ${
+                        canManageSchedule
+                          ? 'cursor-grab active:cursor-grabbing hover:shadow-sm'
+                          : ''
+                      } ${isPaused ? 'opacity-60' : ''} ${
+                        isBeingDragged ? 'opacity-35 scale-95 ring-1 ring-cyan-500/60' : ''
+                      } ${isDeleting ? 'opacity-45 pointer-events-none' : ''}`}
                     >
-                      <div className="font-medium pr-10 truncate flex items-center gap-1.5">
-                        <span className="truncate">{tr?.name || 'Тренер'}</span>
+                      <div className="flex items-center justify-between gap-1">
+                        <div className="flex items-center gap-1 min-w-0 flex-1">
+                          {canManageSchedule && (
+                            <GripVertical className="w-3.5 h-3.5 st-muted shrink-0 touch-none" />
+                          )}
+                          <span className="font-medium truncate">{tr?.name || 'Тренер'}</span>
+                        </div>
+
+                        {canManageSchedule && (
+                          <div
+                            data-no-drag="true"
+                            className="flex items-center gap-0.5 shrink-0"
+                            onPointerDown={(e) => e.stopPropagation()}
+                            onMouseDown={(e) => e.stopPropagation()}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                openEditShiftModal(sh);
+                              }}
+                              title="Редактировать смену"
+                              aria-label="Редактировать смену"
+                              className="w-6 h-6 inline-flex items-center justify-center rounded-md text-slate-500 hover:text-cyan-600 hover:bg-cyan-500/10 cursor-pointer"
+                            >
+                              <Pencil className="w-3.5 h-3.5" />
+                            </button>
+                            <button
+                              type="button"
+                              disabled={isDeleting}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                void handleDeleteShift(sh.id);
+                              }}
+                              title="Удалить смену"
+                              aria-label="Удалить смену"
+                              className="w-6 h-6 inline-flex items-center justify-center rounded-md text-slate-500 hover:text-rose-600 hover:bg-rose-500/10 cursor-pointer disabled:opacity-40"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center justify-between gap-1.5">
+                        <div className="font-mono text-[11px] font-semibold st-accent-text">
+                          {sh.startTime}–{sh.endTime}
+                          {isPaused ? ' · Пауза' : ''}
+                        </div>
                         {trStats.count > 0 && (
                           <span className="text-[10px] font-mono text-amber-600 dark:text-amber-400 shrink-0">
                             ★{trStats.average.toFixed(1)}
                           </span>
                         )}
                       </div>
-                      <div className="font-mono text-[11px] st-accent-text">
-                        {sh.startTime}–{sh.endTime}
-                        {isPaused ? ' · Пауза' : ''}
-                      </div>
                       <div className="text-[11px] st-muted truncate">{st?.name}</div>
-
-                      {canManageSchedule && (
-                        <div
-                          className="absolute top-1.5 right-1.5 flex items-center gap-1"
-                          onClick={(e) => e.stopPropagation()}
-                        >
-                          <button
-                            type="button"
-                            onClick={() => openEditShiftModal(sh)}
-                            title="Редактировать смену"
-                            className="p-0.5 text-slate-400 hover:text-cyan-600 cursor-pointer"
-                          >
-                            <Pencil className="w-3 h-3" />
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => handleDeleteShift(sh.id)}
-                            title="Удалить смену"
-                            className="p-0.5 text-slate-400 hover:text-rose-600 cursor-pointer"
-                          >
-                            <Trash2 className="w-3 h-3" />
-                          </button>
-                        </div>
-                      )}
                     </div>
                   );
                 })}
-                {!dayShifts.length && (
+                {!dayShifts.length && !isDropTarget && (
                   <div className="text-[11px] st-muted pt-2">Нет смен</div>
                 )}
               </div>
@@ -1462,6 +1634,26 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
           })}
         </div>
       </div>
+
+      {/* Floating Drag Preview for Trainer Shift */}
+      {draggingShift && (
+        <div
+          style={{
+            left: draggingShift.clientX + 12,
+            top: draggingShift.clientY + 12,
+          }}
+          className="fixed z-[90] pointer-events-none w-44 rounded-lg st-surface border-2 border-cyan-500 px-2.5 py-2 shadow-2xl text-xs space-y-0.5 opacity-95"
+        >
+          <div className="flex items-center gap-1 font-semibold truncate">
+            <GripVertical className="w-3.5 h-3.5 st-accent-text shrink-0" />
+            <span className="truncate">{draggingShift.trainerName}</span>
+          </div>
+          <div className="font-mono text-[11px] st-accent-text">{draggingShift.timeText}</div>
+          {draggingShift.studioName && (
+            <div className="text-[10px] st-muted truncate">{draggingShift.studioName}</div>
+          )}
+        </div>
+      )}
 
       {/* Studio Reception Hours Management */}
       <div className="rounded-xl st-surface border st-border p-4">
@@ -1719,6 +1911,14 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
                         </div>
                         <div>{st?.name || 'Студия'}</div>
                         <div className="st-muted">Тренер: {expandedBooking.trainerName}</div>
+                        {cl &&
+                          (expandedBooking.studioId !== cl.studioId ||
+                            (cl.assignedTrainerId &&
+                              expandedBooking.trainerId !== cl.assignedTrainerId)) && (
+                            <div className="text-[11px] font-semibold text-amber-600 dark:text-amber-400">
+                              Занятие в другой студии / у нового тренера
+                            </div>
+                          )}
                         {st && (
                           <div className="st-muted font-mono">Приём: {st.openHours}</div>
                         )}
@@ -2102,6 +2302,21 @@ export const ScheduleBookingsView: React.FC<ScheduleProps> = ({
                 ))}
               </select>
             </div>
+            {(() => {
+              const selCl = clients.find((c) => c.id === bClientId);
+              if (
+                selCl &&
+                (bStudioId !== selCl.studioId ||
+                  (selCl.assignedTrainerId && bTrainerId !== selCl.assignedTrainerId))
+              ) {
+                return (
+                  <div className="p-2.5 rounded-lg bg-cyan-50/70 dark:bg-cyan-950/30 border border-cyan-200 dark:border-cyan-800 text-xs text-cyan-800 dark:text-cyan-200">
+                    Запись в другую студию или к новому тренеру: выбранный тренер автоматически увидит карту клиента для проведения занятия.
+                  </div>
+                );
+              }
+              return null;
+            })()}
             <div>
               <label className="block text-xs font-medium st-muted mb-1">Услуга</label>
               <select
