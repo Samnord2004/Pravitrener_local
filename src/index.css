@@ -397,6 +397,62 @@
   transform-origin: center;
 }
 
+/* Live Training Session proportional font scaling */
+.live-session-scalable .ls-scale-area .text-\[9px\] {
+  font-size: calc(9px * var(--ls-font-scale, 1));
+  line-height: calc(12px * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-\[10px\] {
+  font-size: calc(10px * var(--ls-font-scale, 1));
+  line-height: calc(14px * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-\[11px\] {
+  font-size: calc(11px * var(--ls-font-scale, 1));
+  line-height: calc(15px * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-xs {
+  font-size: calc(0.75rem * var(--ls-font-scale, 1));
+  line-height: calc(1rem * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-sm {
+  font-size: calc(0.875rem * var(--ls-font-scale, 1));
+  line-height: calc(1.25rem * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-base {
+  font-size: calc(1rem * var(--ls-font-scale, 1));
+  line-height: calc(1.45rem * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-lg {
+  font-size: calc(1.125rem * var(--ls-font-scale, 1));
+  line-height: calc(1.6rem * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-xl {
+  font-size: calc(1.25rem * var(--ls-font-scale, 1));
+  line-height: calc(1.75rem * var(--ls-font-scale, 1));
+}
+.live-session-scalable .ls-scale-area .text-2xl {
+  font-size: calc(1.5rem * var(--ls-font-scale, 1));
+  line-height: calc(1.95rem * var(--ls-font-scale, 1));
+}
+@media (min-width: 640px) {
+  .live-session-scalable .ls-scale-area .sm\:text-sm {
+    font-size: calc(0.875rem * var(--ls-font-scale, 1));
+    line-height: calc(1.25rem * var(--ls-font-scale, 1));
+  }
+  .live-session-scalable .ls-scale-area .sm\:text-base {
+    font-size: calc(1rem * var(--ls-font-scale, 1));
+    line-height: calc(1.45rem * var(--ls-font-scale, 1));
+  }
+  .live-session-scalable .ls-scale-area .sm\:text-xl {
+    font-size: calc(1.25rem * var(--ls-font-scale, 1));
+    line-height: calc(1.75rem * var(--ls-font-scale, 1));
+  }
+  .live-session-scalable .ls-scale-area .sm\:text-2xl {
+    font-size: calc(1.5rem * var(--ls-font-scale, 1));
+    line-height: calc(1.95rem * var(--ls-font-scale, 1));
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after {
     animation-duration: 0.01ms !important;

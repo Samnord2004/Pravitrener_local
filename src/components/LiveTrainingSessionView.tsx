@@ -21,6 +21,12 @@ import {
   Usb,
   Unplug,
   RotateCcw,
+  Lock,
+  Unlock,
+  Move,
+  Minus,
+  Plus,
+  Type,
 } from 'lucide-react';
 import type {
   Booking,
@@ -111,6 +117,92 @@ const PIN_LABELS: Record<keyof PinOffsets, string> = {
   lf: 'Лев. ног',
   heart: 'Сердце',
 };
+
+interface LiveSessionLayoutPrefs {
+  leftWidthPx: number;
+  rightWidthPx: number;
+  lowerHeightPx: number;
+  bottomLeftPct: number;
+  fontScale: number;
+}
+
+const DEFAULT_LAYOUT_PREFS: LiveSessionLayoutPrefs = {
+  leftWidthPx: 276,
+  rightWidthPx: 288,
+  lowerHeightPx: 230,
+  bottomLeftPct: 58,
+  fontScale: 1,
+};
+
+const clampNum = (value: unknown, min: number, max: number, fallback: number): number => {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return fallback;
+  return Math.min(max, Math.max(min, num));
+};
+
+const sanitizePins = (raw?: Partial<PinOffsets> | null): PinOffsets => {
+  const fix = (key: keyof PinOffsets) => ({
+    x: Number(clampNum(raw?.[key]?.x, 3, 97, DEFAULT_PINS[key].x).toFixed(1)),
+    y: Number(clampNum(raw?.[key]?.y, 3, 97, DEFAULT_PINS[key].y).toFixed(1)),
+  });
+  return {
+    rh: fix('rh'),
+    lh: fix('lh'),
+    rf: fix('rf'),
+    lf: fix('lf'),
+    heart: fix('heart'),
+  };
+};
+
+const layoutStorageKey = (userId: string) => `etalon_live_session_layout_v1:${userId || 'default'}`;
+const pinsStorageKey = (userId: string) => `etalon_live_session_pins_v1:${userId || 'default'}`;
+
+function loadLayoutPrefs(userId: string): LiveSessionLayoutPrefs {
+  try {
+    const raw = localStorage.getItem(layoutStorageKey(userId));
+    if (!raw) return DEFAULT_LAYOUT_PREFS;
+    const parsed = JSON.parse(raw) as Partial<LiveSessionLayoutPrefs>;
+    return {
+      leftWidthPx: Math.round(clampNum(parsed.leftWidthPx, 210, 540, DEFAULT_LAYOUT_PREFS.leftWidthPx)),
+      rightWidthPx: Math.round(clampNum(parsed.rightWidthPx, 210, 540, DEFAULT_LAYOUT_PREFS.rightWidthPx)),
+      lowerHeightPx: Math.round(clampNum(parsed.lowerHeightPx, 155, 480, DEFAULT_LAYOUT_PREFS.lowerHeightPx)),
+      bottomLeftPct: Number(clampNum(parsed.bottomLeftPct, 28, 74, DEFAULT_LAYOUT_PREFS.bottomLeftPct).toFixed(1)),
+      fontScale: Number(clampNum(parsed.fontScale, 0.85, 1.5, DEFAULT_LAYOUT_PREFS.fontScale).toFixed(2)),
+    };
+  } catch {
+    return DEFAULT_LAYOUT_PREFS;
+  }
+}
+
+function saveLayoutPrefs(userId: string, prefs: LiveSessionLayoutPrefs) {
+  try {
+    localStorage.setItem(layoutStorageKey(userId), JSON.stringify(prefs));
+  } catch {
+    // Ignore storage quota issues
+  }
+}
+
+function loadPinPrefs(userId: string): { pins: PinOffsets; heartLocked: boolean } {
+  try {
+    const raw = localStorage.getItem(pinsStorageKey(userId));
+    if (!raw) return { pins: DEFAULT_PINS, heartLocked: true };
+    const parsed = JSON.parse(raw) as { pins?: Partial<PinOffsets>; heartLocked?: boolean };
+    return {
+      pins: sanitizePins(parsed.pins),
+      heartLocked: typeof parsed.heartLocked === 'boolean' ? parsed.heartLocked : true,
+    };
+  } catch {
+    return { pins: DEFAULT_PINS, heartLocked: true };
+  }
+}
+
+function savePinPrefs(userId: string, pins: PinOffsets, heartLocked: boolean) {
+  try {
+    localStorage.setItem(pinsStorageKey(userId), JSON.stringify({ pins, heartLocked }));
+  } catch {
+    // Ignore storage quota issues
+  }
+}
 
 function playCountdownDoneTone() {
   try {
@@ -235,9 +327,144 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
     bpPhase?: 'before' | 'after';
   } | null>(null);
 
-  // Pin Alignment Calibration
+  // Pin Alignment Calibration & Persistent Heart Position
   const [showPinTuner, setShowPinTuner] = useState(false);
-  const [pins, setPins] = useState<PinOffsets>(DEFAULT_PINS);
+  const [pins, setPins] = useState<PinOffsets>(() => loadPinPrefs(currentUser.id).pins);
+  const [heartLocked, setHeartLocked] = useState<boolean>(
+    () => loadPinPrefs(currentUser.id).heartLocked
+  );
+  const [isDraggingHeart, setIsDraggingHeart] = useState(false);
+
+  // Resizable Windows & Proportional Font Scale Preferences (persisted per user)
+  const [layoutPrefs, setLayoutPrefs] = useState<LiveSessionLayoutPrefs>(() =>
+    loadLayoutPrefs(currentUser.id)
+  );
+  const [activeResize, setActiveResize] = useState<'left' | 'right' | 'lower' | 'bottomSplit' | null>(
+    null
+  );
+
+  const rootContainerRef = useRef<HTMLDivElement | null>(null);
+  const upperBandRef = useRef<HTMLDivElement | null>(null);
+  const lowerBandRef = useRef<HTMLDivElement | null>(null);
+  const silhouetteBoxRef = useRef<HTMLDivElement | null>(null);
+
+  const loadedUserIdRef = useRef(currentUser.id);
+  useEffect(() => {
+    if (loadedUserIdRef.current !== currentUser.id) {
+      loadedUserIdRef.current = currentUser.id;
+      const pinData = loadPinPrefs(currentUser.id);
+      setPins(pinData.pins);
+      setHeartLocked(pinData.heartLocked);
+      setLayoutPrefs(loadLayoutPrefs(currentUser.id));
+    }
+  }, [currentUser.id]);
+
+  useEffect(() => {
+    savePinPrefs(currentUser.id, pins, heartLocked);
+  }, [currentUser.id, pins, heartLocked]);
+
+  useEffect(() => {
+    saveLayoutPrefs(currentUser.id, layoutPrefs);
+  }, [currentUser.id, layoutPrefs]);
+
+  const startPanelResize = (
+    mode: 'left' | 'right' | 'lower' | 'bottomSplit',
+    e: React.PointerEvent
+  ) => {
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startPrefs = layoutPrefs;
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+
+    setActiveResize(mode);
+    document.body.style.cursor = mode === 'lower' ? 'row-resize' : 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    const onMove = (moveEvent: PointerEvent) => {
+      const dx = moveEvent.clientX - startX;
+      const dy = moveEvent.clientY - startY;
+
+      if (mode === 'left') {
+        const upperW = upperBandRef.current?.clientWidth || 1200;
+        const maxLeft = Math.max(240, upperW - startPrefs.rightWidthPx - 260);
+        const nextLeft = Math.round(clampNum(startPrefs.leftWidthPx + dx, 210, maxLeft, startPrefs.leftWidthPx));
+        setLayoutPrefs((prev) => ({ ...prev, leftWidthPx: nextLeft }));
+      } else if (mode === 'right') {
+        const upperW = upperBandRef.current?.clientWidth || 1200;
+        const maxRight = Math.max(240, upperW - startPrefs.leftWidthPx - 260);
+        const nextRight = Math.round(clampNum(startPrefs.rightWidthPx - dx, 210, maxRight, startPrefs.rightWidthPx));
+        setLayoutPrefs((prev) => ({ ...prev, rightWidthPx: nextRight }));
+      } else if (mode === 'lower') {
+        const rootH = rootContainerRef.current?.clientHeight || 820;
+        const maxLower = Math.max(240, rootH - 250);
+        const nextLower = Math.round(clampNum(startPrefs.lowerHeightPx - dy, 155, maxLower, startPrefs.lowerHeightPx));
+        setLayoutPrefs((prev) => ({ ...prev, lowerHeightPx: nextLower }));
+      } else if (mode === 'bottomSplit') {
+        const lowerW = lowerBandRef.current?.clientWidth || 1000;
+        const deltaPct = (dx / Math.max(320, lowerW)) * 100;
+        const nextPct = Number(clampNum(startPrefs.bottomLeftPct + deltaPct, 28, 74, startPrefs.bottomLeftPct).toFixed(1));
+        setLayoutPrefs((prev) => ({ ...prev, bottomLeftPct: nextPct }));
+      }
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', cleanup);
+      window.removeEventListener('pointercancel', cleanup);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+      setActiveResize(null);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', cleanup);
+    window.addEventListener('pointercancel', cleanup);
+  };
+
+  const startHeartDrag = (e: React.PointerEvent) => {
+    if (heartLocked) return;
+    if (e.button !== 0 && e.pointerType === 'mouse') return;
+    const box = silhouetteBoxRef.current;
+    if (!box) return;
+    e.preventDefault();
+    e.stopPropagation();
+
+    const prevCursor = document.body.style.cursor;
+    const prevSelect = document.body.style.userSelect;
+    setIsDraggingHeart(true);
+    document.body.style.cursor = 'grabbing';
+    document.body.style.userSelect = 'none';
+
+    const updateFromClientPos = (clientX: number, clientY: number) => {
+      const rect = box.getBoundingClientRect();
+      if (rect.width <= 0 || rect.height <= 0) return;
+      const x = Number(clampNum(((clientX - rect.left) / rect.width) * 100, 4, 96, 52).toFixed(1));
+      const y = Number(clampNum(((clientY - rect.top) / rect.height) * 100, 5, 95, 36).toFixed(1));
+      setPins((prev) => ({ ...prev, heart: { x, y } }));
+    };
+
+    const onMove = (moveEvent: PointerEvent) => {
+      updateFromClientPos(moveEvent.clientX, moveEvent.clientY);
+    };
+
+    const cleanup = () => {
+      window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('pointerup', cleanup);
+      window.removeEventListener('pointercancel', cleanup);
+      document.body.style.cursor = prevCursor;
+      document.body.style.userSelect = prevSelect;
+      setIsDraggingHeart(false);
+    };
+
+    window.addEventListener('pointermove', onMove);
+    window.addEventListener('pointerup', cleanup);
+    window.addEventListener('pointercancel', cleanup);
+  };
 
   // Real Live Sensor Telemetry from connected physical hardware
   const liveSensors = useHardwareTelemetry();
@@ -1283,12 +1510,123 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
     return { winchPath, emg1Path, emg2Path, targetY };
   }, [history, telemetry, safeTargetWinchKg]);
 
+  const layoutDirty =
+    layoutPrefs.leftWidthPx !== DEFAULT_LAYOUT_PREFS.leftWidthPx ||
+    layoutPrefs.rightWidthPx !== DEFAULT_LAYOUT_PREFS.rightWidthPx ||
+    layoutPrefs.lowerHeightPx !== DEFAULT_LAYOUT_PREFS.lowerHeightPx ||
+    layoutPrefs.bottomLeftPct !== DEFAULT_LAYOUT_PREFS.bottomLeftPct ||
+    layoutPrefs.fontScale !== DEFAULT_LAYOUT_PREFS.fontScale;
+
+  const sessionCssVars = {
+    '--ls-left-w': `${layoutPrefs.leftWidthPx}px`,
+    '--ls-right-w': `${layoutPrefs.rightWidthPx}px`,
+    '--ls-lower-h': `${layoutPrefs.lowerHeightPx}px`,
+    '--ls-bottom-left-w': `${layoutPrefs.bottomLeftPct}%`,
+    '--ls-font-scale': String(layoutPrefs.fontScale),
+  } as React.CSSProperties;
+
   return (
-    <div className="lg:h-full flex flex-col gap-2.5 lg:overflow-hidden">
+    <div
+      ref={rootContainerRef}
+      style={sessionCssVars}
+      className="live-session-scalable lg:h-full flex flex-col gap-1.5 lg:overflow-hidden"
+    >
+      {/* Slim Workspace Customization Toolbar: Window Sizing, Font Scale & Heart Pin Lock */}
+      <div className="ls-no-scale shrink-0 flex flex-wrap items-center justify-between gap-2 px-2.5 py-1 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-[11px]">
+        <div className="hidden lg:flex items-center gap-2 text-slate-500">
+          <span>Тяните границы окон мышкой или трекпадом для изменения размера</span>
+        </div>
+        <div className="flex flex-wrap items-center gap-2 ml-auto">
+          <div className="inline-flex items-center gap-1 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 px-1.5 py-0.5">
+            <Type className="w-3.5 h-3.5 text-slate-500 shrink-0" />
+            <span className="text-slate-500 mr-0.5 hidden sm:inline">Шрифт:</span>
+            <button
+              type="button"
+              disabled={layoutPrefs.fontScale <= 0.85}
+              onClick={() =>
+                setLayoutPrefs((prev) => ({
+                  ...prev,
+                  fontScale: Number(Math.max(0.85, prev.fontScale - 0.05).toFixed(2)),
+                }))
+              }
+              title="Уменьшить шрифт"
+              className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+            >
+              <Minus className="w-3 h-3" />
+            </button>
+            <button
+              type="button"
+              onClick={() => setLayoutPrefs((prev) => ({ ...prev, fontScale: 1 }))}
+              title="Нажмите, чтобы вернуть масштаб шрифта 100%"
+              className="min-w-[38px] text-center font-mono font-semibold text-slate-700 dark:text-slate-200 tabular-nums cursor-pointer"
+            >
+              {Math.round(layoutPrefs.fontScale * 100)}%
+            </button>
+            <button
+              type="button"
+              disabled={layoutPrefs.fontScale >= 1.5}
+              onClick={() =>
+                setLayoutPrefs((prev) => ({
+                  ...prev,
+                  fontScale: Number(Math.min(1.5, prev.fontScale + 0.05).toFixed(2)),
+                }))
+              }
+              title="Увеличить шрифт"
+              className="p-0.5 rounded hover:bg-slate-200 dark:hover:bg-slate-800 disabled:opacity-40 cursor-pointer"
+            >
+              <Plus className="w-3 h-3" />
+            </button>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => setHeartLocked((v) => !v)}
+            title={
+              heartLocked
+                ? 'Разблокировать сердечко, чтобы перетащить его в удобное место на силуэте'
+                : 'Зафиксировать сердечко на выбранном месте для всех новых сессий'
+            }
+            className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border font-medium cursor-pointer whitespace-nowrap transition-colors ${
+              heartLocked
+                ? 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                : 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
+            }`}
+          >
+            {heartLocked ? (
+              <>
+                <Move className="w-3 h-3 text-rose-500" />
+                <span>Переместить сердце</span>
+              </>
+            ) : (
+              <>
+                <Lock className="w-3 h-3" />
+                <span>Зафиксировать сердце</span>
+              </>
+            )}
+          </button>
+
+          {layoutDirty && (
+            <button
+              type="button"
+              onClick={() => setLayoutPrefs(DEFAULT_LAYOUT_PREFS)}
+              title="Сбросить размеры окон и масштаб шрифта по умолчанию"
+              className="inline-flex items-center gap-1 px-2 py-1 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 cursor-pointer whitespace-nowrap"
+            >
+              <RotateCcw className="w-3 h-3" />
+              <span>Сбросить окна</span>
+            </button>
+          )}
+        </div>
+      </div>
+
+      <div className="ls-scale-area flex-1 min-h-0 flex flex-col gap-2.5 lg:gap-0">
       {/* UPPER BAND: Left Session Controls · Center Upper Limb Load Silhouette · Right BLE & Winch */}
-      <div className="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-[248px_minmax(0,1fr)_258px] xl:grid-cols-[276px_minmax(0,1fr)_288px] gap-2.5 items-stretch">
+      <div
+        ref={upperBandRef}
+        className="flex-1 min-h-0 flex flex-col lg:flex-row gap-2.5 lg:gap-0 items-stretch"
+      >
         {/* LEFT COLUMN: Client, Program/Exercise & Active Timer/Transport */}
-        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-2 min-h-0 overflow-y-auto">
+        <div className="w-full lg:w-[var(--ls-left-w)] lg:shrink-0 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-2 min-h-0 overflow-y-auto">
           <div className="space-y-2">
             <div>
               <div className="flex items-center justify-between mb-1">
@@ -1712,8 +2050,28 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           )}
         </div>
 
+        {/* VERTICAL RESIZE HANDLE: Left <-> Center */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Потяните границу, чтобы изменить ширину левой панели (двойной клик — сброс)"
+          onPointerDown={(e) => startPanelResize('left', e)}
+          onDoubleClick={() =>
+            setLayoutPrefs((prev) => ({ ...prev, leftWidthPx: DEFAULT_LAYOUT_PREFS.leftWidthPx }))
+          }
+          className="hidden lg:flex w-2.5 shrink-0 cursor-col-resize items-center justify-center group select-none touch-none"
+        >
+          <div
+            className={`w-1 h-14 rounded-full transition-colors ${
+              activeResize === 'left'
+                ? 'bg-cyan-500'
+                : 'bg-slate-300/70 dark:bg-slate-700/80 group-hover:bg-cyan-500/80'
+            }`}
+          />
+        </div>
+
         {/* CENTER UPPER STAGE: Anatomical Silhouette Centered in Upper Screen */}
-        <div className="rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 flex flex-col justify-between min-h-0 relative">
+        <div className="flex-1 min-w-0 lg:min-w-[260px] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5 flex flex-col justify-between min-h-0 relative">
           <div className="flex flex-wrap items-center justify-between gap-2 shrink-0">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5">
               <h3 className="font-display text-sm sm:text-base font-semibold">
@@ -1726,7 +2084,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                 Сессия: {formatTimer(sessionElapsedSec)}
               </span>
             </div>
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-wrap items-center gap-1.5">
               <button
                 type="button"
                 onClick={handleResetSilhouetteMinMax}
@@ -1735,6 +2093,23 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
               >
                 <RotateCcw className="w-3 h-3" />
                 <span>Сброс мин/макс</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setHeartLocked((v) => !v)}
+                title={
+                  heartLocked
+                    ? 'Передвинуть сердечко на схеме'
+                    : 'Зафиксировать позицию сердечка'
+                }
+                className={`inline-flex items-center gap-1 px-2 py-1 rounded-lg border text-[11px] font-medium cursor-pointer whitespace-nowrap ${
+                  heartLocked
+                    ? 'border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+                    : 'border-rose-500 bg-rose-50 dark:bg-rose-950/40 text-rose-700 dark:text-rose-300'
+                }`}
+              >
+                {heartLocked ? <Unlock className="w-3 h-3 text-rose-500" /> : <Lock className="w-3 h-3" />}
+                <span>{heartLocked ? 'Сердце' : 'Зафиксировать'}</span>
               </button>
               <button
                 type="button"
@@ -1748,9 +2123,9 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           </div>
 
           {showPinTuner && (
-            <div className="lg:absolute lg:top-11 lg:right-3 lg:z-20 lg:w-72 my-2 lg:my-0 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-2 shadow-lg">
-              <div className="flex items-center justify-between">
-                <span className="font-medium">Позиция меток на схеме (%)</span>
+            <div className="lg:absolute lg:top-11 lg:right-3 lg:z-20 lg:w-76 my-2 lg:my-0 p-3 rounded-lg bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-xs space-y-2 shadow-lg">
+              <div className="flex items-center justify-between gap-2">
+                <span className="font-medium">Позиция меток (%) · сохраняется</span>
                 <button
                   type="button"
                   onClick={() => setPins(DEFAULT_PINS)}
@@ -1765,21 +2140,27 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                     <span className="font-mono w-14 text-slate-500 truncate">{PIN_LABELS[k]}</span>
                     <input
                       type="number"
-                      min={2}
-                      max={98}
+                      min={3}
+                      max={97}
                       value={pins[k].x}
                       onChange={(e) =>
-                        setPins((p) => ({ ...p, [k]: { ...p[k], x: Number(e.target.value) } }))
+                        setPins((p) => ({
+                          ...p,
+                          [k]: { ...p[k], x: Number(clampNum(e.target.value, 3, 97, p[k].x).toFixed(1)) },
+                        }))
                       }
                       className="w-12 px-1 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono"
                     />
                     <input
                       type="number"
-                      min={2}
-                      max={98}
+                      min={3}
+                      max={97}
                       value={pins[k].y}
                       onChange={(e) =>
-                        setPins((p) => ({ ...p, [k]: { ...p[k], y: Number(e.target.value) } }))
+                        setPins((p) => ({
+                          ...p,
+                          [k]: { ...p[k], y: Number(clampNum(e.target.value, 3, 97, p[k].y).toFixed(1)) },
+                        }))
                       }
                       className="w-12 px-1 py-0.5 rounded border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 font-mono"
                     />
@@ -1792,6 +2173,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           {/* Centered Anatomical Diagram Canvas (mirror-swapped limbs + Heart Pulse + Min/Max) */}
           <div className="flex-1 min-h-[260px] sm:min-h-[340px] lg:min-h-0 w-full flex items-center justify-center py-0.5 lg:[container-type:size]">
             <div
+              ref={silhouetteBoxRef}
               className={`relative w-full aspect-[16/10] lg:w-[min(100cqw,calc(100cqh*1.6))] lg:h-[min(100cqh,calc(100cqw/1.6))] mx-auto rounded-lg overflow-hidden bg-white border transition-colors ${
                 loadStatus === 'danger'
                   ? 'border-red-500 ring-2 ring-red-500/30'
@@ -1807,15 +2189,56 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
                     ? 'Женский силуэт распределения нагрузки по конечностям'
                     : 'Мужской силуэт распределения нагрузки по конечностям'
                 }
+                draggable={false}
                 referrerPolicy="no-referrer"
-                className="w-full h-full object-contain"
+                className="w-full h-full object-contain select-none pointer-events-none"
               />
 
-              {/* Volumetric Beating Red Heart with Live BPM directly on the Silhouette */}
+              {/* Volumetric Beating Red Heart with Live BPM directly on the Silhouette (Draggable & Lockable) */}
               <div
                 style={{ left: `${pins.heart.x}%`, top: `${pins.heart.y}%` }}
-                className="absolute -translate-x-1/2 -translate-y-1/2 z-10"
+                onPointerDown={startHeartDrag}
+                title={
+                  heartLocked
+                    ? 'Позиция зафиксирована. Нажмите иконку замка или «Переместить сердце», чтобы изменить.'
+                    : 'Перетащите сердечко мышкой или трекпадом в нужное место и нажмите «Зафиксировать».'
+                }
+                className={`absolute -translate-x-1/2 -translate-y-1/2 z-20 group rounded-xl transition-shadow ${
+                  heartLocked
+                    ? ''
+                    : `ring-2 ring-dashed ring-rose-500 shadow-xl touch-none select-none ${
+                        isDraggingHeart ? 'cursor-grabbing scale-[1.03]' : 'cursor-grab'
+                      }`
+                }`}
               >
+                {!heartLocked && (
+                  <div className="flex items-center justify-center gap-1 mb-0.5 px-1.5 py-0.5 rounded-md bg-rose-600 text-white text-[9px] font-semibold shadow whitespace-nowrap">
+                    <Move className="w-2.5 h-2.5 shrink-0" />
+                    <span>Перетащите</span>
+                    <button
+                      type="button"
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setHeartLocked(true);
+                      }}
+                      className="ml-1 px-1.5 py-0.5 rounded bg-white text-rose-700 font-bold hover:bg-rose-50 cursor-pointer"
+                    >
+                      OK
+                    </button>
+                  </div>
+                )}
+                {heartLocked && (
+                  <button
+                    type="button"
+                    onPointerDown={(e) => e.stopPropagation()}
+                    onClick={() => setHeartLocked(false)}
+                    title="Переместить сердечко на другое место"
+                    className="absolute -top-1.5 -right-1.5 z-30 w-5 h-5 rounded-full bg-slate-900/90 border border-rose-400/70 text-rose-300 flex items-center justify-center opacity-0 group-hover:opacity-100 focus:opacity-100 transition-opacity cursor-pointer shadow"
+                  >
+                    <Unlock className="w-2.5 h-2.5" />
+                  </button>
+                )}
                 <VolumetricPulseHeart
                   bpm={telemetry.heartRateBpm}
                   connected={wahooConnected}
@@ -2039,8 +2462,28 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           </div>
         </div>
 
+        {/* VERTICAL RESIZE HANDLE: Center <-> Right */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Потяните границу, чтобы изменить ширину правой панели (двойной клик — сброс)"
+          onPointerDown={(e) => startPanelResize('right', e)}
+          onDoubleClick={() =>
+            setLayoutPrefs((prev) => ({ ...prev, rightWidthPx: DEFAULT_LAYOUT_PREFS.rightWidthPx }))
+          }
+          className="hidden lg:flex w-2.5 shrink-0 cursor-col-resize items-center justify-center group select-none touch-none"
+        >
+          <div
+            className={`w-1 h-14 rounded-full transition-colors ${
+              activeResize === 'right'
+                ? 'bg-cyan-500'
+                : 'bg-slate-300/70 dark:bg-slate-700/80 group-hover:bg-cyan-500/80'
+            }`}
+          />
+        </div>
+
         {/* RIGHT COLUMN: Compact BLE Devices + Target/Live Winch Controls */}
-        <div className="flex flex-col gap-2.5 min-h-0">
+        <div className="w-full lg:w-[var(--ls-right-w)] lg:shrink-0 flex flex-col gap-2 min-h-0 overflow-y-auto">
           {/* Real Hardware Sensors (BLE / USB Serial / Wi-Fi WS) */}
           <div className="shrink-0 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-2.5">
             <div className="flex items-center justify-between gap-2 mb-1.5">
@@ -2204,7 +2647,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           </div>
 
           {/* Target Winch Load Slider Card (Real load read strictly from ESP32) */}
-          <div className="flex-1 min-h-0 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-2 overflow-y-auto">
+          <div className="shrink-0 lg:flex-1 lg:min-h-[190px] rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-2 overflow-y-auto">
             <div className="grid grid-cols-2 gap-2">
               <div>
                 <label className="block text-[11px] font-medium text-slate-500 mb-1 truncate">
@@ -2300,10 +2743,33 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
         </div>
       </div>
 
+      {/* HORIZONTAL RESIZE HANDLE: Upper Band <-> Lower Band */}
+      <div
+        role="separator"
+        aria-orientation="horizontal"
+        title="Потяните границу вверх или вниз, чтобы изменить высоту нижней панели (двойной клик — сброс)"
+        onPointerDown={(e) => startPanelResize('lower', e)}
+        onDoubleClick={() =>
+          setLayoutPrefs((prev) => ({ ...prev, lowerHeightPx: DEFAULT_LAYOUT_PREFS.lowerHeightPx }))
+        }
+        className="hidden lg:flex h-2.5 shrink-0 cursor-row-resize items-center justify-center group select-none touch-none"
+      >
+        <div
+          className={`h-1 w-20 rounded-full transition-colors ${
+            activeResize === 'lower'
+              ? 'bg-cyan-500'
+              : 'bg-slate-300/70 dark:bg-slate-700/80 group-hover:bg-cyan-500/80'
+          }`}
+        />
+      </div>
+
       {/* LOWER BAND: Real-Time EMG & Winch Chart + Pre/Post Height/BP & Diary Note */}
-      <div className="shrink-0 grid grid-cols-1 lg:grid-cols-12 gap-2.5 items-stretch">
+      <div
+        ref={lowerBandRef}
+        className="shrink-0 lg:h-[var(--ls-lower-h)] flex flex-col lg:flex-row gap-2.5 lg:gap-0 items-stretch min-h-0"
+      >
         {/* Bottom-Left: EMG & Winch Chart + Volumetric Red Beating Heart */}
-        <div className="lg:col-span-7 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-2">
+        <div className="w-full lg:w-[var(--ls-bottom-left-w)] lg:shrink-0 min-w-0 min-h-0 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-2 overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex flex-wrap items-baseline gap-x-3 gap-y-0.5 min-w-0">
               <h3 className="font-display text-xs sm:text-sm font-semibold truncate">
@@ -2336,7 +2802,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
             </div>
           </div>
 
-          <div className="w-full h-[104px] xl:h-[118px] rounded-lg bg-slate-950 p-2 border border-slate-800">
+          <div className="w-full flex-1 min-h-[86px] rounded-lg bg-slate-950 p-2 border border-slate-800">
             <svg viewBox="0 0 640 150" preserveAspectRatio="none" className="w-full h-full overflow-visible">
               <line x1="0" y1="37" x2="640" y2="37" stroke="#1e293b" strokeWidth="1" />
               <line x1="0" y1="75" x2="640" y2="75" stroke="#1e293b" strokeWidth="1" />
@@ -2403,8 +2869,31 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
           </div>
         </div>
 
+        {/* VERTICAL RESIZE HANDLE: Bottom-Left Chart <-> Bottom-Right Measurements */}
+        <div
+          role="separator"
+          aria-orientation="vertical"
+          title="Потяните границу, чтобы изменить соотношение ширины графика и замеров (двойной клик — сброс)"
+          onPointerDown={(e) => startPanelResize('bottomSplit', e)}
+          onDoubleClick={() =>
+            setLayoutPrefs((prev) => ({
+              ...prev,
+              bottomLeftPct: DEFAULT_LAYOUT_PREFS.bottomLeftPct,
+            }))
+          }
+          className="hidden lg:flex w-2.5 shrink-0 cursor-col-resize items-center justify-center group select-none touch-none"
+        >
+          <div
+            className={`w-1 h-14 rounded-full transition-colors ${
+              activeResize === 'bottomSplit'
+                ? 'bg-cyan-500'
+                : 'bg-slate-300/70 dark:bg-slate-700/80 group-hover:bg-cyan-500/80'
+            }`}
+          />
+        </div>
+
         {/* Bottom-Right: Measurements (Height, Weight, Empty-by-default BP, Posture Before/After, Notes) */}
-        <div className="lg:col-span-5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-1.5">
+        <div className="flex-1 min-w-0 min-h-0 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 p-3 flex flex-col justify-between gap-1.5 overflow-y-auto">
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             <div className="flex items-center gap-2">
               <h3 className="font-display text-xs sm:text-sm font-semibold">
@@ -2652,6 +3141,7 @@ export const LiveTrainingSessionView: React.FC<LiveSessionProps> = ({
             />
           </div>
         </div>
+      </div>
       </div>
 
       {/* Exercise Rating & Trainer Notes Modal */}
