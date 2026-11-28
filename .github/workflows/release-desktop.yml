@@ -29,12 +29,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: Install root & desktop dependencies
         run: |
-          npm ci
-          npm --prefix desktop ci
+          npm install --no-audit --no-fund
+          npm --prefix desktop install --no-audit --no-fund
 
       - name: Build bundle & package Apple Silicon .dmg
         env:
@@ -49,7 +48,6 @@ jobs:
             release-desktop/*.dmg
             release-desktop/*.zip
             release-desktop/*.blockmap
-            release-desktop/latest-mac.yml
           if-no-files-found: error
 
   build-windows-x64:
@@ -63,12 +61,11 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
-          cache: "npm"
 
       - name: Install root & desktop dependencies
         run: |
-          npm ci
-          npm --prefix desktop ci
+          npm install --no-audit --no-fund
+          npm --prefix desktop install --no-audit --no-fund
 
       - name: Build bundle & package Windows .exe
         env:
@@ -82,7 +79,6 @@ jobs:
           path: |
             release-desktop/*.exe
             release-desktop/*.blockmap
-            release-desktop/latest.yml
           if-no-files-found: error
 
   publish-release:
@@ -125,9 +121,9 @@ jobs:
           tag_name: ${{ steps.meta.outputs.tag }}
           name: "ЭТАЛОН ПРАВИЛО ${{ steps.meta.outputs.tag }}"
           generate_release_notes: true
+          fail_on_unmatched_files: false
           files: |
             release-artifacts/*.dmg
             release-artifacts/*.zip
             release-artifacts/*.exe
             release-artifacts/*.blockmap
-            release-artifacts/latest*.yml

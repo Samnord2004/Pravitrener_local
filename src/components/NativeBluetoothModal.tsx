@@ -176,17 +176,37 @@ export const NativeBluetoothModal: React.FC<NativeBluetoothModalProps> = ({
           <div className="p-3 rounded-xl st-surface-muted border st-border space-y-2">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-medium">
-                Выберите датчик, сопряжённый в настройках Bluetooth ПК или смартфона
+                Выберите датчик из списка системного Bluetooth или запустите поиск BLE рядом
               </span>
-              <button
-                type="button"
-                disabled={loading}
-                onClick={loadDevices}
-                className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border st-border st-surface text-[11px] font-medium hover:opacity-85 cursor-pointer"
-              >
-                <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
-                <span>Обновить список</span>
-              </button>
+              <div className="flex flex-wrap items-center gap-1.5">
+                {backend === 'desktop_ipc' && (
+                  <button
+                    type="button"
+                    disabled={connectingId !== null}
+                    onClick={() =>
+                      onSelectDevice({
+                        deviceId: 'ble-scan',
+                        deviceName: device.name,
+                        address: '',
+                        protocol: 'gatt',
+                      })
+                    }
+                    className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg st-accent-bg text-[11px] font-medium hover:opacity-90 cursor-pointer disabled:opacity-50"
+                  >
+                    <Bluetooth className="w-3 h-3" />
+                    <span>Поиск BLE рядом</span>
+                  </button>
+                )}
+                <button
+                  type="button"
+                  disabled={loading}
+                  onClick={loadDevices}
+                  className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg border st-border st-surface text-[11px] font-medium hover:opacity-85 cursor-pointer"
+                >
+                  <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''}`} />
+                  <span>Обновить список</span>
+                </button>
+              </div>
             </div>
             {note && <p className="text-[11px] st-muted leading-relaxed">{note}</p>}
 

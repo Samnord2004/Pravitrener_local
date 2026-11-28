@@ -121,6 +121,8 @@ function downloadInstallerFile(rawUrl, destPath, hops = 0) {
 
 // Enable Web Bluetooth and Web Serial inside Electron Desktop
 app.commandLine.appendSwitch('enable-experimental-web-platform-features');
+app.commandLine.appendSwitch('enable-web-bluetooth');
+app.commandLine.appendSwitch('enable-features', 'WebBluetooth');
 
 const CONFIG_PATH = path.join(app.getPath('userData'), 'desktop-config.json');
 
@@ -261,66 +263,59 @@ function createWindow() {
     },
   });
 
-  // Bluetooth device selection handler for Desktop (interactive list + auto-match)
+  // Bluetooth device selection handler for Desktop (interactive UI scanner modal)
   let btScanTimer = null;
   let pendingBtCallback = null;
   let lastBtDeviceList = [];
 
-  mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
-    event.preventDefault();
-    pendingBtCallback = callback;
-    lastBtDeviceList = deviceList || [];
-
+  const emitWebBleState = (scanning, devices) => {
     try {
-      mainWindow.webContents.send('desktop:webble-devices', lastBtDeviceList);
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.send('desktop:webble-devices', {
+          scanning,
+          devices: Array.isArray(devices) ? devices : [],
+        });
+      }
     } catch {
       // ignore closed webContents
     }
+  };
 
-    const preferred = lastBtDeviceList.find((d) =>
-      /tickr|wahoo|mibfs|mi scale|miscale|esp32|pravilo|myoblue|b05|bpm|heart|blemodule|yk-|yonker|ibpa|yuwell|omron|beurer|contec|sinocare|medisana|blesmart|blood/i.test(
-        d.deviceName || ''
-      )
-    );
-    if (preferred) {
-      if (btScanTimer) {
-        clearTimeout(btScanTimer);
-        btScanTimer = null;
-      }
-      const cb = pendingBtCallback;
-      pendingBtCallback = null;
-      try {
-        cb(preferred.deviceId);
-      } catch {
-        // ignore stale callback
-      }
-      return;
+  mainWindow.webContents.on('select-bluetooth-device', (event, deviceList, callback) => {
+    event.preventDefault();
+    pendingBtCallback = callback;
+    lastBtDeviceList = Array.isArray(deviceList) ? deviceList : [];
+
+    emitWebBleState(true, lastBtDeviceList);
+
+    if (btScanTimer) {
+      clearTimeout(btScanTimer);
     }
-
-    if (!btScanTimer) {
-      btScanTimer = setTimeout(() => {
-        btScanTimer = null;
-        if (pendingBtCallback) {
-          const cb = pendingBtCallback;
-          pendingBtCallback = null;
-          try {
-            cb(lastBtDeviceList[0]?.deviceId || '');
-          } catch {
-            // ignore stale callback
-          }
+    btScanTimer = setTimeout(() => {
+      btScanTimer = null;
+      if (pendingBtCallback) {
+        const cb = pendingBtCallback;
+        pendingBtCallback = null;
+        emitWebBleState(false, []);
+        try {
+          cb('');
+        } catch {
+          // ignore stale callback
         }
-      }, 6500);
-    }
+      }
+    }, 60000);
   });
 
+  ipcMain.removeHandler('desktop:webble-pick');
   ipcMain.handle('desktop:webble-pick', (_ev, deviceId) => {
     if (btScanTimer) {
       clearTimeout(btScanTimer);
       btScanTimer = null;
     }
-    if (pendingBtCallback) {
-      const cb = pendingBtCallback;
-      pendingBtCallback = null;
+    const cb = pendingBtCallback;
+    pendingBtCallback = null;
+    emitWebBleState(false, []);
+    if (cb) {
       try {
         cb(String(deviceId || ''));
         return true;
@@ -336,13 +331,37 @@ function createWindow() {
       clearTimeout(btScanTimer);
       btScanTimer = null;
     }
+    if (pendingBtCallback) {
+      try {
+        pendingBtCallback('');
+      } catch {
+        // ignore
+      }
+    }
     pendingBtCallback = null;
   });
 
-  mainWindow.webContents.session.setPermissionRequestHandler((_wc, permission, callback) => {
-    const allowed = ['notifications', 'bluetooth', 'serial', 'media'];
+  const ses = mainWindow.webContents.session;
+  ses.setPermissionRequestHandler((_wc, permission, callback) => {
+    const allowed = ['notifications', 'bluetooth', 'bluetoothScanning', 'serial', 'media'];
     callback(allowed.includes(permission));
   });
+  ses.setPermissionCheckHandler((_wc, permission) => {
+    const allowed = ['notifications', 'bluetooth', 'bluetoothScanning', 'serial', 'media'];
+    return allowed.includes(permission);
+  });
+  ses.setDevicePermissionHandler((details) => {
+    return details.deviceType === 'bluetooth' || details.deviceType === 'serial';
+  });
+  if (typeof ses.setBluetoothPairingHandler === 'function') {
+    ses.setBluetoothPairingHandler((details, callback) => {
+      if (details.pairingKind === 'confirmPin') {
+        callback({ confirmed: true, pin: details.pin });
+      } else {
+        callback({ confirmed: true });
+      }
+    });
+  }
 
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     try {

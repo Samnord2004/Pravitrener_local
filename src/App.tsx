@@ -74,6 +74,7 @@ import {
 import { LoginView } from './components/LoginView';
 import { PublicBookingView } from './components/PublicBookingView';
 import { OfflineIndicator, PWAInstallButton } from './components/PWAInstallButton';
+import { DesktopBlePickerModal } from './components/DesktopBlePickerModal';
 import { OverviewAnalyticsView } from './components/OverviewAnalyticsView';
 import { ScheduleBookingsView } from './components/ScheduleBookingsView';
 import {
@@ -2346,6 +2347,7 @@ export default function App() {
         />
       )}
 
+      <DesktopBlePickerModal />
       <OfflineIndicator />
     </div>
   );

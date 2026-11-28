@@ -80,10 +80,23 @@ declare global {
           port?: string;
           protocol?: NativeBluetoothProtocol;
           baudRate?: number;
-        }) => Promise<{ success: boolean; deviceName: string; message: string }>;
+        }) => Promise<{
+          success: boolean;
+          fallbackToWebBluetooth?: boolean;
+          deviceName: string;
+          message: string;
+        }>;
         disconnect: (type: EquipmentType) => Promise<boolean>;
         write: (type: EquipmentType, command: string) => Promise<boolean>;
         onEvent: (cb: (ev: NativeBluetoothBridgeEvent) => void) => () => void;
+        pickWebBleDevice?: (deviceId: string) => Promise<boolean>;
+        onWebBleDevices?: (
+          cb: (
+            payload:
+              | { scanning: boolean; devices: Array<{ deviceId: string; deviceName?: string }> }
+              | Array<{ deviceId: string; deviceName?: string }>
+          ) => void
+        ) => () => void;
       };
     };
   }
@@ -896,8 +909,10 @@ export async function connectRealBleDeviceStream(params: {
 
   try {
     const optionalServices = SERVICE_UUIDS[params.type];
+    const isElectronDesktop =
+      typeof window !== 'undefined' && Boolean(window.praviloDesktop?.isDesktopApp);
     let device: BluetoothDeviceLike;
-    if (params.acceptAllDevices) {
+    if (params.acceptAllDevices || (isElectronDesktop && !params.nameFilter?.trim())) {
       device = await bt.requestDevice({
         acceptAllDevices: true,
         optionalServices,
@@ -2112,6 +2127,18 @@ export async function connectNativeBluetoothStream(params: {
     });
     if (!conn.success) {
       unsub();
+      if (conn.fallbackToWebBluetooth) {
+        params.onProgress?.(
+          'Переключение на системный BLE-сканер (CoreBluetooth / WinRT)...'
+        );
+        return connectRealBleDeviceStream({
+          type: params.type,
+          acceptAllDevices: true,
+          onPacket: params.onPacket,
+          onProgress: params.onProgress,
+          onDisconnect: params.onDisconnect,
+        });
+      }
       return {
         result: {
           success: false,
